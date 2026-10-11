@@ -43,6 +43,8 @@ pub(crate) enum InstallTarget {
     #[value(name = "claude-code", alias = "claude")]
     ClaudeCode,
     Pi,
+    Omp,
+    Cursor,
     All,
 }
 
@@ -52,7 +54,15 @@ impl InstallTarget {
             Self::Codex => vec![CodingAgent::Codex],
             Self::ClaudeCode => vec![CodingAgent::ClaudeCode],
             Self::Pi => vec![CodingAgent::Pi],
-            Self::All => vec![CodingAgent::Codex, CodingAgent::ClaudeCode, CodingAgent::Pi],
+            Self::Omp => vec![CodingAgent::Omp],
+            Self::Cursor => vec![CodingAgent::Cursor],
+            Self::All => vec![
+                CodingAgent::Codex,
+                CodingAgent::ClaudeCode,
+                CodingAgent::Pi,
+                CodingAgent::Omp,
+                CodingAgent::Cursor,
+            ],
         }
     }
 
@@ -99,7 +109,12 @@ pub(super) fn scoped_for(
     target: InstallTarget,
     install_dir: Option<PathBuf>,
 ) -> Option<PathBuf> {
-    if target.is_all() && matches!(agent, CodingAgent::Pi) {
+    if target.is_all()
+        && matches!(
+            agent,
+            CodingAgent::Pi | CodingAgent::Omp | CodingAgent::Cursor
+        )
+    {
         return None;
     }
     install_dir

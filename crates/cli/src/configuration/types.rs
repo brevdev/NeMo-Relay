@@ -127,6 +127,8 @@ pub(crate) struct AgentConfigs {
     pub(crate) claude: AgentCommandConfig,
     pub(crate) codex: AgentCommandConfig,
     pub(crate) pi: AgentCommandConfig,
+    pub(crate) omp: AgentCommandConfig,
+    pub(crate) cursor: AgentCommandConfig,
 }
 
 #[derive(Debug, Clone, Default)]

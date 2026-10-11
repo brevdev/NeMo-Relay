@@ -9,7 +9,6 @@ use std::time::{Duration, Instant};
 use axum::http::HeaderMap;
 use nemo_relay::api::event::{CategoryProfile, EventCategory};
 use nemo_relay::api::llm::{LlmAttributes, LlmCallEndParams, LlmHandle, LlmRequest, llm_call_end};
-#[cfg(test)]
 use nemo_relay::api::llm::{LlmCallParams, llm_call};
 use nemo_relay::api::runtime::{
     ScopeStackHandle, SubscriberDelivery, TASK_SCOPE_STACK, create_scope_stack, task_scope_push,
@@ -47,7 +46,8 @@ use routing::*;
 pub(crate) use types::*;
 
 use crate::events::{
-    AgentKind, LlmHintEvent, NormalizedEvent, SessionEvent, SubagentEvent, ToolEvent,
+    AgentKind, LlmHintEvent, LlmObservedEvent, NormalizedEvent, SessionEvent, SubagentEvent,
+    ToolEvent,
 };
 
 const LLM_HINT_TTL: Duration = Duration::from_secs(300);
@@ -513,6 +513,11 @@ pub(super) struct Session {
     llms: HashMap<String, LlmHandle>,
     tools: HashMap<String, ActiveTool>,
     pending_llm_hints: Vec<PendingLlmHint>,
+    // For a harness observed only through hooks (Cursor): the prompt that opened the turn, the
+    // turn's previous response, and thinking reported ahead of the response it belongs to.
+    observed_prompt: Option<Value>,
+    observed_response: Option<String>,
+    observed_reasoning: Vec<String>,
     pending_tool_hints: Vec<PendingToolHint>,
     // Maps stable user-task text from confidently owned LLM requests to the subagent that owns
     // that conversation. This gives parallel coding-agent workers a stronger provider-format
@@ -1652,6 +1657,9 @@ impl Session {
             llms: HashMap::new(),
             tools: HashMap::new(),
             pending_llm_hints: Vec::new(),
+            observed_prompt: None,
+            observed_response: None,
+            observed_reasoning: Vec::new(),
             pending_tool_hints: Vec::new(),
             llm_request_affinity: HashMap::new(),
             last_llm_owner: None,
@@ -1882,6 +1890,7 @@ impl Session {
             NormalizedEvent::LlmHint(event) => {
                 event.subagent_id.clone().or_else(|| event.agent_id.clone())
             }
+            NormalizedEvent::LlmObserved(_) => None,
             NormalizedEvent::ToolStarted(event) | NormalizedEvent::ToolEnded(event) => {
                 event.subagent_id.clone()
             }
@@ -1912,11 +1921,21 @@ impl Session {
                     }
                     NormalizedEvent::SubagentEnded(event) => self.end_subagent(event).await,
                     NormalizedEvent::LlmHint(event) => self.add_llm_hint(event).map(|()| None),
+                    NormalizedEvent::LlmObserved(event) => {
+                        self.record_observed_llm(event).map(|()| None)
+                    }
                     NormalizedEvent::ToolStarted(event) => {
                         self.start_tool(event).await.map(|()| None)
                     }
                     NormalizedEvent::ToolEnded(event) => self.end_tool(event).await,
-                    NormalizedEvent::PromptSubmitted(event) => self.start_turn(event).await,
+                    NormalizedEvent::PromptSubmitted(event) => {
+                        if event.agent_kind == AgentKind::Cursor {
+                            self.observed_prompt = event.payload.get("prompt").cloned();
+                            self.observed_response = None;
+                            self.observed_reasoning.clear();
+                        }
+                        self.start_turn(event).await
+                    }
                     NormalizedEvent::Compaction(event) => {
                         self.mark("compaction", event).map(|()| None)
                     }
@@ -3082,6 +3101,70 @@ impl Session {
 
     // Stores an LLM correlation hint from hook activity after pruning expired hints. Hints do not
     // emit runtime events themselves; they are consumed by the next matching gateway LLM call.
+    // Records a model step a harness reported through its hooks, as an LLM span that opens and
+    // closes at once.
+    //
+    // Cursor's model traffic goes through Cursor's own backend, which the gateway cannot proxy,
+    // so its `afterAgentResponse` hook is the only record of a model step. The span carries what
+    // the hooks give: the prompt that opened the turn, the response text, any thinking reported
+    // ahead of it, and token usage. Thinking alone is held until its response arrives. A later
+    // step in the same turn also carries the previous response, which is how ATIF tells a
+    // continuation from a new user turn.
+    fn record_observed_llm(&mut self, event: LlmObservedEvent) -> Result<(), CliError> {
+        let Some(text) = event.text else {
+            self.observed_reasoning.extend(event.reasoning);
+            return Ok(());
+        };
+        self.ensure_turn_started(event.metadata.clone())?;
+        let mut messages = Vec::new();
+        if let Some(prompt) = &self.observed_prompt {
+            messages.push(json!({ "role": "user", "content": prompt }));
+        }
+        match self.observed_response.replace(text.clone()) {
+            Some(previous) => messages.push(json!({ "role": "assistant", "content": previous })),
+            // No prompt was seen (the turn opened implicitly): still a continuation, not a user.
+            None if messages.is_empty() => {
+                messages.push(json!({ "role": "assistant", "content": "" }));
+            }
+            None => {}
+        }
+        let request = LlmRequest {
+            headers: Map::new(),
+            content: json!({ "model": event.model, "messages": messages }),
+        };
+        let reasoning = std::mem::take(&mut self.observed_reasoning);
+        let mut response = json!({ "model": event.model, "content": text });
+        if !reasoning.is_empty() {
+            response["reasoning"] = Value::String(reasoning.join("\n\n"));
+        }
+        if let Some(usage) = event.usage {
+            response["usage"] = usage;
+        }
+        let mut metadata = event.metadata;
+        if let (Some(object), Some(generation_id)) = (metadata.as_object_mut(), event.generation_id)
+        {
+            object.insert("generation_id".into(), Value::String(generation_id));
+        }
+        let parent = self.root_work_scope();
+        let handle = llm_call(
+            LlmCallParams::builder()
+                .name(event.agent_kind.as_str())
+                .request(&request)
+                .parent_opt(parent.as_ref())
+                .metadata(metadata)
+                .model_name_opt(event.model)
+                .build(),
+        )?;
+        llm_call_end(
+            LlmCallEndParams::builder()
+                .handle(&handle)
+                .response(response)
+                .metadata(json!({}))
+                .build(),
+        )?;
+        Ok(())
+    }
+
     fn add_llm_hint(&mut self, event: LlmHintEvent) -> Result<(), CliError> {
         if !event
             .subagent_id

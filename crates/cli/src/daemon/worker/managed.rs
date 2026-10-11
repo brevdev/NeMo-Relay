@@ -303,8 +303,38 @@ impl ManagedRuntime {
                 operational::hook_completed(&operational, "managed_worker_hook", "completed");
                 Ok(outcome.response)
             }
-            HookRoute::Pi => {
-                let outcome = pi::adapt(payload, &parts.headers);
+            HookRoute::Cursor => {
+                let outcome =
+                    crate::agents::shared::adapters::cursor::adapt(payload, &parts.headers);
+                let operational = outcome
+                    .events
+                    .first()
+                    .map(|event| operational.clone().with_session(event.session_id()))
+                    .unwrap_or(operational);
+                operational::hook_started(&operational, "managed_worker_hook");
+                if let Err(error) = self
+                    .sessions
+                    .apply_events(&parts.headers, outcome.events)
+                    .await
+                {
+                    operational::hook_failed(
+                        &operational,
+                        "managed_worker_hook",
+                        error.log_kind(),
+                        true,
+                    );
+                    return Err(error);
+                }
+                operational::hook_completed(&operational, "managed_worker_hook", "completed");
+                Ok(outcome.response)
+            }
+            HookRoute::Pi | HookRoute::Omp => {
+                let kind = if route == HookRoute::Omp {
+                    crate::events::AgentKind::Omp
+                } else {
+                    crate::events::AgentKind::Pi
+                };
+                let outcome = pi::adapt_as(kind, payload, &parts.headers);
                 let operational = outcome
                     .events
                     .first()

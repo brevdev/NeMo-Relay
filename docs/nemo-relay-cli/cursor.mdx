@@ -1,0 +1,49 @@
+---
+title: "Cursor CLI"
+description: ""
+position: 8
+---
+{/* SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+SPDX-License-Identifier: Apache-2.0 */}
+
+Use this guide to observe Cursor CLI (`cursor-agent`) sessions. Cursor sends its
+model requests through Cursor's own backend, which Relay cannot proxy, so Cursor is
+observed through its hooks only:
+
+- `beforeSubmitPrompt` opens a turn with the user's prompt, and `stop` closes it.
+- `afterAgentResponse` and `afterAgentThought` become one LLM span per model step,
+  with the response text, the thinking ahead of it, the model, and input, output and
+  cache token counts.
+- `preToolUse`, `postToolUse` and `postToolUseFailure` become tool spans with their
+  inputs and outputs. The shell, MCP and file hooks report the same executions and
+  are kept as marks rather than second spans.
+
+The trajectory therefore has the prompt, every response, thinking, tool call and
+token count, but not the full requests Cursor's servers build, and no model-call
+security or optimization. Relay never blocks Cursor: every hook is allowed.
+
+## Install
+
+```bash
+nemo-relay install cursor
+```
+
+This adds one entry per observed event to `~/.cursor/hooks.json`, running
+`nemo-relay hook-forward cursor --forward-only --fail-open`, and registers a
+`nemo-relay` MCP server in `~/.cursor/mcp.json`. Installed hooks forward only to the
+authenticated shared gateway that `nemo-relay mcp` starts; Cursor starts that server
+with each session, as Claude Code and Codex do with their Relay plugins. A headless
+`cursor-agent -p` run needs `--approve-mcps`, or the server approved once. Every other
+hook entry and MCP server is kept, an MCP server of the same name that Relay did not
+write is refused, and `nemo-relay uninstall cursor` removes exactly what was added.
+
+There is no `nemo-relay cursor` launcher: Cursor reads hooks only from its
+`hooks.json`, so a per-run gateway has nothing to hand it.
+
+## Limitations
+
+- Verified against Cursor CLI 2026.10.x. `cursor-agent --version` prints a dated
+  build; its commit suffix is ignored.
+- Cursor also loads Claude Code's hook settings. A machine with Relay's Claude Code
+  hooks installed can report a Cursor session through both routes.
+- Managed daemon bundles do not include Cursor.

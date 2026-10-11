@@ -14,18 +14,21 @@ async fn pi_managed_install_diagnostics_distinguish_current_and_stale_versions()
         ),
         (crate::agents::pi::launch::PI_EXTENSION_PATH_ENV, None),
     ]);
-    crate::agents::pi::install::install(crate::installation::InstallRequest {
-        install_dir: None,
-        force: false,
-        dry_run: false,
-        skip_doctor: true,
-    })
+    crate::agents::pi::install::install(
+        crate::agents::pi::PiHost::Pi,
+        crate::installation::InstallRequest {
+            install_dir: None,
+            force: false,
+            dry_run: false,
+            skip_doctor: true,
+        },
+    )
     .unwrap();
 
     let current = pi_managed_install_check().unwrap();
     assert_eq!(current.status, Status::Pass);
     assert!(current.details.contains(env!("CARGO_PKG_VERSION")));
-    let root = crate::agents::pi::install::install_root().unwrap();
+    let root = crate::agents::pi::install::install_root(crate::agents::pi::PiHost::Pi).unwrap();
     let state_path = root.join(".nemo-relay-install.json");
     let mut state: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&state_path).unwrap()).unwrap();

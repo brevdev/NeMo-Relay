@@ -10,12 +10,24 @@ fn agent_descriptors_are_complete_and_unique() {
     let executables = CodingAgent::ALL.map(CodingAgent::executable);
     let hook_paths = CodingAgent::ALL.map(CodingAgent::hook_path);
 
-    assert_eq!(arguments, ["claude", "codex", "pi"]);
-    assert_eq!(install_arguments, ["claude-code", "codex", "pi"]);
-    assert_eq!(executables, ["claude", "codex", "pi"]);
+    assert_eq!(arguments, ["claude", "codex", "pi", "omp", "cursor"]);
+    assert_eq!(
+        install_arguments,
+        ["claude-code", "codex", "pi", "omp", "cursor"]
+    );
+    assert_eq!(
+        executables,
+        ["claude", "codex", "pi", "omp", "cursor-agent"]
+    );
     assert_eq!(
         hook_paths,
-        ["/hooks/claude-code", "/hooks/codex", "/hooks/pi"]
+        [
+            "/hooks/claude-code",
+            "/hooks/codex",
+            "/hooks/pi",
+            "/hooks/omp",
+            "/hooks/cursor"
+        ]
     );
     assert_eq!(CodingAgent::ClaudeCode.label(), "Claude Code");
     assert_eq!(CodingAgent::Codex.label(), "Codex");
@@ -23,6 +35,8 @@ fn agent_descriptors_are_complete_and_unique() {
     assert_eq!(CodingAgent::Codex.hook_events().len(), 10);
     assert_eq!(CodingAgent::Pi.label(), "pi");
     assert_eq!(CodingAgent::Pi.hook_events().len(), 15);
+    assert_eq!(CodingAgent::Omp.label(), "omp");
+    assert_eq!(CodingAgent::Omp.hook_events().len(), 14);
     for agent in CodingAgent::ALL {
         let events = agent.hook_events();
         assert!(events.iter().all(|event| !event.is_empty()));

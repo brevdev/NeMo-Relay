@@ -70,7 +70,25 @@ export type GatewayConfig = {
   onFault: 'open' | 'closed';
   /** Session identifier sent with every payload. */
   sessionId: string;
+  /** The gateway route for this host's hooks: `/hooks/pi`, or `/hooks/omp` under omp. */
+  hookPath?: string;
 };
+
+/**
+ * The host this extension runs in: pi, or omp (oh-my-pi), a pi fork that loads pi extensions.
+ *
+ * The launcher names it in `NEMO_RELAY_PI_HOST`. A persistent install has no launcher, so this
+ * falls back to the executable: omp ships as a single `omp` binary.
+ */
+export function detectHost(
+  env: Record<string, string | undefined> = process.env,
+  execPath: string = process.execPath,
+): 'pi' | 'omp' {
+  const named = env.NEMO_RELAY_PI_HOST;
+  if (named === 'pi' || named === 'omp') return named;
+  const executable = execPath.split(/[\\/]/).pop()?.toLowerCase() ?? '';
+  return executable === 'omp' || executable.startsWith('omp.') ? 'omp' : 'pi';
+}
 
 const GUARDRAIL_REJECTION_TYPE = 'nemo_relay_guardrail_rejected';
 
@@ -103,7 +121,7 @@ export async function postHook(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), config.timeoutMs);
   try {
-    const response = await fetch(`${config.url}/hooks/pi`, {
+    const response = await fetch(`${config.url}${config.hookPath ?? '/hooks/pi'}`, {
       method: 'POST',
       headers: headers(config),
       body: JSON.stringify({ session_id: config.sessionId, ...payload }),
@@ -224,5 +242,6 @@ export function configFromEnv(sessionId: string): GatewayConfig {
     timeoutMs,
     onFault: process.env.NEMO_RELAY_PI_FAIL === 'closed' ? 'closed' : 'open',
     sessionId,
+    hookPath: `/hooks/${detectHost()}`,
   };
 }

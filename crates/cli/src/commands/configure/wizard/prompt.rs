@@ -114,7 +114,7 @@ pub(super) async fn run(
 /// install is optional, and a declined or broken install still leaves a working setup for
 /// the manual routes -- so every path prints how to do it later and returns.
 fn offer_pi_extension() {
-    if !crate::agents::pi::install::setup_install_available() {
+    if !crate::agents::pi::install::setup_install_available(crate::agents::pi::PiHost::Pi) {
         return;
     }
     println!("  ℹ pi hooks originate inside the NeMo Relay pi extension, so `nemo-relay pi`");
@@ -146,7 +146,8 @@ fn run_pi_extension_install() {
         dry_run: false,
         skip_doctor: false,
     };
-    if let Err(error) = crate::agents::pi::install::install(request) {
+    if let Err(error) = crate::agents::pi::install::install(crate::agents::pi::PiHost::Pi, request)
+    {
         println!();
         println!("  The pi extension was not installed: {error}");
         print_pi_extension_skipped();

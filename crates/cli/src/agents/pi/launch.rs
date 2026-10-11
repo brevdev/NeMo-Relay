@@ -35,12 +35,18 @@ pub(crate) const PI_OPENAI_UPSTREAM_ENV: &str = "NEMO_RELAY_PI_OPENAI_UPSTREAM";
 /// Upstream this gateway forwards Anthropic traffic to.
 pub(crate) const PI_ANTHROPIC_UPSTREAM_ENV: &str = "NEMO_RELAY_PI_ANTHROPIC_UPSTREAM";
 
+/// Which host the extension runs in (`pi` or `omp`), so it posts to that host's hook route.
+pub(crate) const PI_HOST_ENV: &str = "NEMO_RELAY_PI_HOST";
+
 pub(crate) fn prepare(
+    host: super::PiHost,
     launch: &mut PreparedAgentLaunch,
     gateway_url: &str,
     gateway: &crate::configuration::GatewayConfig,
 ) -> Result<(), CliError> {
     set_env(launch, PI_GATEWAY_URL_ENV, gateway_url);
+    set_env(launch, PI_HOST_ENV, host.label());
+    let label = host.label();
 
     // Tell the extension what this gateway actually forwards to.
     //
@@ -59,14 +65,15 @@ pub(crate) fn prepare(
     // `-e` is the right loader here: it is trust-ungated, loads before
     // discovery, and survives `--no-extensions`, so a launched session gets the
     // extension regardless of the user's own pi configuration.
-    let Some(path) = extension_path() else {
+    let Some(path) = extension_path(host) else {
         return Err(CliError::Launch(format!(
             "could not locate the NeMo Relay pi extension at a load path that is not \
-             trust-gated; run `nemo-relay install pi`, install it yourself with `pi \
+             trust-gated; run `nemo-relay install {label}`, install it yourself with `{label} \
              install <path to crates/cli/assets/pi-extension>` (without `--local`), or set \
              {PI_EXTENSION_PATH_ENV} to its entry point. A project-scoped install is \
              deliberately not used here: `-e` is never trust-gated, so passing one would load \
-             code pi itself would not trust. `nemo-relay doctor pi` reports what was found"
+             code {label} itself would not trust. `nemo-relay doctor {label}` reports what was \
+             found"
         )));
     };
     // `-e` loads *in addition to* discovery, so a second copy of this extension elsewhere on the
@@ -75,7 +82,7 @@ pub(crate) fn prepare(
     // command twice. There is no way to suppress it from here that does not also drop the user's
     // own extensions -- `--no-extensions` keeps `-e` but discards everything discovered -- so
     // refuse and name both copies rather than launch a session whose trace is doubled.
-    if let Some(duplicate) = conflicting_extension_path(&path) {
+    if let Some(duplicate) = conflicting_extension_path(host, &path) {
         return Err(CliError::Launch(format!(
             "two copies of the NeMo Relay pi extension would load in the same session: {} and \
              {}. pi de-duplicates its extension set by path, not by package, so both register \
@@ -90,7 +97,7 @@ pub(crate) fn prepare(
     // run -- `-a` overrides it, `defaultProjectTrust` can pre-answer it, and "trust this session
     // only" persists nothing -- so refusing would block every launch in an untrusted project
     // over a copy that will not load. Say what happens if the project *is* trusted instead.
-    for site in super::doctor::project_copies_beside(&current_dir(), &path) {
+    for site in super::doctor::project_copies_beside(host, &current_dir(), &path) {
         launch.notes.push(format!(
             "{} is a second copy of this extension under the project's `.pi/`. pi loads it \
              beside the one passed with `-e` whenever the project is trusted, and then every \
@@ -138,13 +145,13 @@ fn set_env(launch: &mut PreparedAgentLaunch, name: &str, value: &str) {
 /// counted here -- and the variable is not something any document tells a user
 /// to set. `launchable_extension_path` also excludes the project scope, which
 /// `-e` would load past pi's trust gate.
-fn extension_path() -> Option<PathBuf> {
-    super::doctor::launchable_extension_path(&current_dir())
+fn extension_path(host: super::PiHost) -> Option<PathBuf> {
+    super::doctor::launchable_extension_path(host, &current_dir())
 }
 
 /// The other copy pi would load beside the launched one, if there is one.
-fn conflicting_extension_path(launched: &std::path::Path) -> Option<PathBuf> {
-    super::doctor::conflicting_extension_site(&current_dir(), launched)
+fn conflicting_extension_path(host: super::PiHost, launched: &std::path::Path) -> Option<PathBuf> {
+    super::doctor::conflicting_extension_site(host, &current_dir(), launched)
 }
 
 fn current_dir() -> PathBuf {

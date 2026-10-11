@@ -176,7 +176,9 @@ fn refresh_attempts_every_managed_install_and_aggregates_installer_failures() {
             match agent {
                 CodingAgent::Codex => Ok(ExitCode::FAILURE),
                 CodingAgent::ClaudeCode => Err(CliError::Install("host rejected refresh".into())),
-                CodingAgent::Pi => unreachable!("Pi is not a marketplace host"),
+                CodingAgent::Pi | CodingAgent::Omp | CodingAgent::Cursor => {
+                    unreachable!("pi, omp and Cursor are not marketplace hosts")
+                }
             }
         },
     )

@@ -49,7 +49,7 @@ fn a_project_scoped_extension_is_reported_because_pi_will_not_say_so() {
     std::fs::create_dir_all(&empty_home).unwrap();
 
     let _env = scoped(None, Some(empty_home.as_os_str()));
-    let sites = relay_extension_sites(temp.path());
+    let sites = relay_extension_sites(crate::agents::pi::PiHost::Pi, temp.path());
 
     // This is the whole point of the check: pi drops this extension with a bare
     // conditional in every non-interactive mode, never reports it, and the
@@ -74,7 +74,7 @@ fn an_empty_project_directory_is_not_reported() {
     // A `.pi/extensions` directory that pi created and nothing was ever put in
     // is not a finding; warning about it would train users to ignore the check.
     assert!(
-        relay_extension_sites(temp.path()).is_empty(),
+        relay_extension_sites(crate::agents::pi::PiHost::Pi, temp.path()).is_empty(),
         "an empty project extensions directory must not be reported"
     );
 }
@@ -89,7 +89,7 @@ fn the_explicit_path_is_reported_as_ungated() {
     std::fs::create_dir_all(&empty_home).unwrap();
 
     let _env = scoped(Some(entry.as_os_str()), Some(empty_home.as_os_str()));
-    let sites = relay_extension_sites(temp.path());
+    let sites = relay_extension_sites(crate::agents::pi::PiHost::Pi, temp.path());
 
     // `-e` loads first in pi's precedence order and survives `--no-extensions`,
     // so an extension reached this way is never subject to project trust --
@@ -108,7 +108,7 @@ fn a_user_scope_install_is_reported_as_ungated() {
     write_relay_package(&user_extensions.join("nemo-relay"));
 
     let _env = scoped(None, Some(agent_dir.as_os_str()));
-    let sites = relay_extension_sites(temp.path());
+    let sites = relay_extension_sites(crate::agents::pi::PiHost::Pi, temp.path());
 
     assert_eq!(sites.len(), 1, "{sites:?}");
     assert_eq!(sites[0].scope, ExtensionScope::User);
@@ -125,8 +125,8 @@ fn an_explicit_path_that_does_not_exist_is_not_reported() {
 
     // A stale environment variable is worse than none: it would report an
     // ungated load path for a file pi cannot read.
-    assert!(relay_extension_sites(temp.path()).is_empty());
-    assert!(!extension_configured());
+    assert!(relay_extension_sites(crate::agents::pi::PiHost::Pi, temp.path()).is_empty());
+    assert!(!extension_configured(crate::agents::pi::PiHost::Pi));
 }
 
 // `pi install` writes nothing into the extension directories -- it appends the
@@ -146,7 +146,7 @@ fn a_pi_install_at_user_scope_is_found_in_settings_not_in_a_directory() {
     .unwrap();
 
     let _env = scoped(None, Some(agent_dir.as_os_str()));
-    let sites = relay_extension_sites(temp.path());
+    let sites = relay_extension_sites(crate::agents::pi::PiHost::Pi, temp.path());
 
     assert_eq!(sites.len(), 1, "{sites:?}");
     assert_eq!(sites[0].scope, ExtensionScope::User);
@@ -169,7 +169,7 @@ fn a_local_pi_install_is_reported_as_project_scoped() {
     std::fs::create_dir_all(&empty_home).unwrap();
 
     let _env = scoped(None, Some(empty_home.as_os_str()));
-    let sites = relay_extension_sites(temp.path());
+    let sites = relay_extension_sites(crate::agents::pi::PiHost::Pi, temp.path());
 
     assert!(
         sites
@@ -196,7 +196,7 @@ fn settings_without_packages_are_not_a_finding() {
     ] {
         std::fs::write(agent_dir.join("settings.json"), body).unwrap();
         assert!(
-            relay_extension_sites(temp.path()).is_empty(),
+            relay_extension_sites(crate::agents::pi::PiHost::Pi, temp.path()).is_empty(),
             "settings body {body} must not be reported as an install"
         );
     }
@@ -275,10 +275,10 @@ fn somebody_elses_pi_extension_is_not_reported_as_ours() {
 
     let _env = scoped(None, Some(agent_dir.as_os_str()));
     assert!(
-        relay_extension_sites(temp.path()).is_empty(),
+        relay_extension_sites(crate::agents::pi::PiHost::Pi, temp.path()).is_empty(),
         "an unrelated pi package must not be reported as the Relay extension"
     );
-    assert!(!extension_configured());
+    assert!(!extension_configured(crate::agents::pi::PiHost::Pi));
 }
 
 // The explicit route was the one hole in that name check: any path that existed
@@ -296,9 +296,9 @@ fn an_unrelated_extension_named_by_the_environment_is_not_reported_as_ours() {
         Some(other.join("index.ts").as_os_str()),
         Some(empty_home.as_os_str()),
     );
-    assert!(relay_extension_sites(temp.path()).is_empty());
-    assert!(!extension_configured());
-    assert!(launchable_extension_path(temp.path()).is_none());
+    assert!(relay_extension_sites(crate::agents::pi::PiHost::Pi, temp.path()).is_empty());
+    assert!(!extension_configured(crate::agents::pi::PiHost::Pi));
+    assert!(launchable_extension_path(crate::agents::pi::PiHost::Pi, temp.path()).is_none());
 }
 
 // `-e` is never trust-gated, so falling back to a project-scoped site would make
@@ -313,8 +313,8 @@ fn the_launch_path_never_promotes_a_project_scoped_extension() {
     std::fs::create_dir_all(&empty_home).unwrap();
 
     let _env = scoped(None, Some(empty_home.as_os_str()));
-    assert!(!relay_extension_sites(temp.path()).is_empty());
-    assert!(launchable_extension_path(temp.path()).is_none());
+    assert!(!relay_extension_sites(crate::agents::pi::PiHost::Pi, temp.path()).is_empty());
+    assert!(launchable_extension_path(crate::agents::pi::PiHost::Pi, temp.path()).is_none());
 }
 
 // pi resolves an `-e` argument as a package source, so an npm specifier that
@@ -331,8 +331,8 @@ fn the_launch_path_skips_an_installed_source_that_is_not_a_path() {
     .unwrap();
 
     let _env = scoped(None, Some(agent_dir.as_os_str()));
-    assert!(!relay_extension_sites(temp.path()).is_empty());
-    assert!(launchable_extension_path(temp.path()).is_none());
+    assert!(!relay_extension_sites(crate::agents::pi::PiHost::Pi, temp.path()).is_empty());
+    assert!(launchable_extension_path(crate::agents::pi::PiHost::Pi, temp.path()).is_none());
 }
 
 // pi's own configuration selector rewrites a string entry into the object form the
@@ -353,7 +353,7 @@ fn an_object_form_package_entry_is_found() {
     .unwrap();
 
     let _env = scoped(None, Some(agent_dir.as_os_str()));
-    let sites = relay_extension_sites(temp.path());
+    let sites = relay_extension_sites(crate::agents::pi::PiHost::Pi, temp.path());
 
     assert_eq!(sites.len(), 1, "{sites:?}");
     assert_eq!(sites[0].scope, ExtensionScope::User);
@@ -361,7 +361,8 @@ fn an_object_form_package_entry_is_found() {
     // Compared canonically: a recorded source is relative to the settings file, so the
     // resolved path keeps the `..` pi itself would resolve away.
     assert_eq!(
-        launchable_extension_path(temp.path()).map(|path| std::fs::canonicalize(path).unwrap()),
+        launchable_extension_path(crate::agents::pi::PiHost::Pi, temp.path())
+            .map(|path| std::fs::canonicalize(path).unwrap()),
         Some(std::fs::canonicalize(&checkout).unwrap())
     );
 }
@@ -385,7 +386,7 @@ fn an_object_form_entry_whose_patterns_leave_it_loaded_is_not_reported_as_disabl
         std::fs::write(agent_dir.join("settings.json"), body).unwrap();
 
         let _env = scoped(None, Some(agent_dir.as_os_str()));
-        let sites = relay_extension_sites(temp.path());
+        let sites = relay_extension_sites(crate::agents::pi::PiHost::Pi, temp.path());
 
         assert_eq!(sites.len(), 1, "{body}: {sites:?}");
         assert_eq!(sites[0].filter, SettingsFilter::Loads, "{body}");
@@ -408,7 +409,7 @@ fn an_include_list_that_omits_this_entry_is_reported_as_disabled() {
         std::fs::write(agent_dir.join("settings.json"), body).unwrap();
 
         let _env = scoped(None, Some(agent_dir.as_os_str()));
-        let sites = relay_extension_sites(temp.path());
+        let sites = relay_extension_sites(crate::agents::pi::PiHost::Pi, temp.path());
         assert_eq!(sites[0].filter, SettingsFilter::Excluded, "{body}");
     }
 }
@@ -428,7 +429,7 @@ fn a_glob_filter_is_reported_as_undecided_rather_than_as_loaded() {
         std::fs::write(agent_dir.join("settings.json"), body).unwrap();
 
         let _env = scoped(None, Some(agent_dir.as_os_str()));
-        let sites = relay_extension_sites(temp.path());
+        let sites = relay_extension_sites(crate::agents::pi::PiHost::Pi, temp.path());
         assert_eq!(sites[0].filter, SettingsFilter::Undecided, "{body}");
     }
 }
@@ -450,14 +451,17 @@ fn the_launch_path_prefers_a_copy_pi_already_loads() {
     .unwrap();
 
     let _env = scoped(None, Some(agent_dir.as_os_str()));
-    let launched = launchable_extension_path(temp.path()).unwrap();
+    let launched = launchable_extension_path(crate::agents::pi::PiHost::Pi, temp.path()).unwrap();
 
     assert_eq!(
         std::fs::canonicalize(&launched).unwrap(),
         std::fs::canonicalize(&live).unwrap(),
         "the enabled copy must win, so the disabled one stays disabled"
     );
-    assert_eq!(conflicting_extension_site(temp.path(), &launched), None);
+    assert_eq!(
+        conflicting_extension_site(crate::agents::pi::PiHost::Pi, temp.path(), &launched),
+        None
+    );
 }
 
 // A third registration route, a sibling of `packages` in the same file, read by a generic loop
@@ -477,7 +481,7 @@ fn an_extensions_entry_in_settings_is_found_in_both_scopes() {
     .unwrap();
 
     let _env = scoped(None, Some(agent_dir.as_os_str()));
-    let sites = relay_extension_sites(temp.path());
+    let sites = relay_extension_sites(crate::agents::pi::PiHost::Pi, temp.path());
     assert_eq!(sites.len(), 1, "{sites:?}");
     assert_eq!(sites[0].scope, ExtensionScope::User);
     assert_eq!(sites[0].filter, SettingsFilter::Loads);
@@ -496,7 +500,7 @@ fn an_extensions_entry_in_settings_is_found_in_both_scopes() {
     std::fs::create_dir_all(&empty_home).unwrap();
 
     let _env = scoped(None, Some(empty_home.as_os_str()));
-    let sites = relay_extension_sites(project.path());
+    let sites = relay_extension_sites(crate::agents::pi::PiHost::Pi, project.path());
     assert!(
         sites
             .iter()
@@ -521,7 +525,7 @@ fn an_extensions_entry_naming_a_container_directory_is_walked() {
     .unwrap();
 
     let _env = scoped(None, Some(agent_dir.as_os_str()));
-    let sites = relay_extension_sites(temp.path());
+    let sites = relay_extension_sites(crate::agents::pi::PiHost::Pi, temp.path());
     assert_eq!(sites.len(), 1, "{sites:?}");
 }
 
@@ -540,7 +544,7 @@ fn an_extensions_entry_carrying_a_pattern_is_reported_as_undecided() {
     .unwrap();
 
     let _env = scoped(None, Some(agent_dir.as_os_str()));
-    let sites = relay_extension_sites(temp.path());
+    let sites = relay_extension_sites(crate::agents::pi::PiHost::Pi, temp.path());
     assert_eq!(sites.len(), 1, "{sites:?}");
     assert_eq!(sites[0].filter, SettingsFilter::Undecided);
 }
@@ -561,11 +565,13 @@ fn two_copies_recorded_in_one_settings_file_are_both_reported() {
     .unwrap();
 
     let _env = scoped(None, Some(agent_dir.as_os_str()));
-    let sites = relay_extension_sites(temp.path());
+    let sites = relay_extension_sites(crate::agents::pi::PiHost::Pi, temp.path());
 
     assert_eq!(sites.len(), 2, "{sites:?}");
-    let launched = launchable_extension_path(temp.path()).unwrap();
-    assert!(conflicting_extension_site(temp.path(), &launched).is_some());
+    let launched = launchable_extension_path(crate::agents::pi::PiHost::Pi, temp.path()).unwrap();
+    assert!(
+        conflicting_extension_site(crate::agents::pi::PiHost::Pi, temp.path(), &launched).is_some()
+    );
 }
 
 #[test]
@@ -577,11 +583,13 @@ fn two_copies_in_one_extensions_directory_are_both_reported() {
     write_relay_package(&extensions.join("nemo-relay-copy"));
 
     let _env = scoped(None, Some(agent_dir.as_os_str()));
-    let sites = relay_extension_sites(temp.path());
+    let sites = relay_extension_sites(crate::agents::pi::PiHost::Pi, temp.path());
 
     assert_eq!(sites.len(), 2, "{sites:?}");
-    let launched = launchable_extension_path(temp.path()).unwrap();
-    assert!(conflicting_extension_site(temp.path(), &launched).is_some());
+    let launched = launchable_extension_path(crate::agents::pi::PiHost::Pi, temp.path()).unwrap();
+    assert!(
+        conflicting_extension_site(crate::agents::pi::PiHost::Pi, temp.path(), &launched).is_some()
+    );
 }
 
 // B2: a copy pi's own settings switch off is reliably *not* a load, so counting it refused a
@@ -602,7 +610,7 @@ fn a_copy_pi_switched_off_is_not_a_second_copy() {
 
         let _env = scoped(Some(explicit.as_os_str()), Some(agent_dir.as_os_str()));
         assert_eq!(
-            conflicting_extension_site(temp.path(), &explicit),
+            conflicting_extension_site(crate::agents::pi::PiHost::Pi, temp.path(), &explicit),
             None,
             "{body}"
         );
@@ -622,7 +630,7 @@ fn an_object_form_entry_with_extension_patterns_is_still_found() {
     .unwrap();
 
     let _env = scoped(None, Some(agent_dir.as_os_str()));
-    let sites = relay_extension_sites(temp.path());
+    let sites = relay_extension_sites(crate::agents::pi::PiHost::Pi, temp.path());
 
     assert_eq!(sites.len(), 1, "{sites:?}");
     assert_eq!(sites[0].filter, SettingsFilter::Loads);
@@ -651,14 +659,15 @@ fn an_object_form_entry_whose_extensions_are_disabled_is_reported_as_disabled() 
         std::fs::write(agent_dir.join("settings.json"), body).unwrap();
 
         let _env = scoped(None, Some(agent_dir.as_os_str()));
-        let sites = relay_extension_sites(temp.path());
+        let sites = relay_extension_sites(crate::agents::pi::PiHost::Pi, temp.path());
 
         assert_eq!(sites.len(), 1, "{body}: {sites:?}");
         assert_eq!(sites[0].filter, SettingsFilter::Excluded, "{body}");
         // Still launchable, deliberately: `-e` applies no settings filter, so the launcher
         // instruments a session the user's own `pi` runs are missing.
         assert_eq!(
-            launchable_extension_path(temp.path()).map(|path| std::fs::canonicalize(path).unwrap()),
+            launchable_extension_path(crate::agents::pi::PiHost::Pi, temp.path())
+                .map(|path| std::fs::canonicalize(path).unwrap()),
             Some(std::fs::canonicalize(&checkout).unwrap()),
             "{body}"
         );
@@ -678,7 +687,7 @@ fn a_distinct_explicit_copy_and_a_user_install_are_both_reported_explicit_first(
     write_relay_package(&explicit);
 
     let _env = scoped(Some(explicit.as_os_str()), Some(agent_dir.as_os_str()));
-    let sites = relay_extension_sites(temp.path());
+    let sites = relay_extension_sites(crate::agents::pi::PiHost::Pi, temp.path());
 
     assert_eq!(sites.len(), 2, "{sites:?}");
     assert_eq!(sites[0].scope, ExtensionScope::Explicit);
@@ -688,7 +697,7 @@ fn a_distinct_explicit_copy_and_a_user_install_are_both_reported_explicit_first(
     // And that is exactly the case pi cannot see: it de-duplicates by path, so both
     // load, and every hook is posted twice.
     assert_eq!(
-        conflicting_extension_site(temp.path(), &explicit),
+        conflicting_extension_site(crate::agents::pi::PiHost::Pi, temp.path(), &explicit),
         Some(installed)
     );
 }
@@ -706,7 +715,10 @@ fn the_same_install_reached_two_ways_is_not_a_second_copy() {
     let entry = installed.join("index.ts");
 
     let _env = scoped(Some(entry.as_os_str()), Some(agent_dir.as_os_str()));
-    assert_eq!(conflicting_extension_site(temp.path(), &entry), None);
+    assert_eq!(
+        conflicting_extension_site(crate::agents::pi::PiHost::Pi, temp.path(), &entry),
+        None
+    );
 }
 
 // pi canonicalizes with `realpathSync`, so a symlinked copy is one copy to pi and
@@ -722,7 +734,10 @@ fn a_symlinked_copy_is_not_a_second_copy() {
     std::os::unix::fs::symlink(&installed, &link).unwrap();
 
     let _env = scoped(Some(link.as_os_str()), Some(agent_dir.as_os_str()));
-    assert_eq!(conflicting_extension_site(temp.path(), &link), None);
+    assert_eq!(
+        conflicting_extension_site(crate::agents::pi::PiHost::Pi, temp.path(), &link),
+        None
+    );
 }
 
 // pi loads a project-scoped copy only for a trusted project, so it is not reliably
@@ -743,7 +758,10 @@ fn a_project_scoped_copy_is_not_a_second_copy() {
     );
 
     let _env = scoped(None, Some(agent_dir.as_os_str()));
-    assert_eq!(conflicting_extension_site(temp.path(), &installed), None);
+    assert_eq!(
+        conflicting_extension_site(crate::agents::pi::PiHost::Pi, temp.path(), &installed),
+        None
+    );
 }
 
 // A user-scope install is what the README's install routes produce, and none of
@@ -757,13 +775,19 @@ fn the_launch_path_prefers_the_explicit_route_over_a_user_scope_install() {
     write_relay_package(&installed);
 
     let _discovered = scoped(None, Some(agent_dir.as_os_str()));
-    assert_eq!(launchable_extension_path(temp.path()), Some(installed));
+    assert_eq!(
+        launchable_extension_path(crate::agents::pi::PiHost::Pi, temp.path()),
+        Some(installed)
+    );
     drop(_discovered);
 
     let explicit = temp.path().join("checkout");
     write_relay_package(&explicit);
     let _env = scoped(Some(explicit.as_os_str()), Some(agent_dir.as_os_str()));
-    assert_eq!(launchable_extension_path(temp.path()), Some(explicit));
+    assert_eq!(
+        launchable_extension_path(crate::agents::pi::PiHost::Pi, temp.path()),
+        Some(explicit)
+    );
 }
 
 // The headline status and the load-path check must agree: they now answer from the
@@ -778,11 +802,19 @@ fn the_headline_status_agrees_with_the_load_path_check() {
     std::fs::create_dir_all(&empty_home).unwrap();
 
     let _found = scoped(Some(entry.as_os_str()), Some(empty_home.as_os_str()));
-    assert!(extension_configured());
-    assert!(hook_status().unwrap().contains("resolved at"));
+    assert!(extension_configured(crate::agents::pi::PiHost::Pi));
+    assert!(
+        hook_status(crate::agents::pi::PiHost::Pi)
+            .unwrap()
+            .contains("resolved at")
+    );
     drop(_found);
 
     let _missing = scoped(None, Some(empty_home.as_os_str()));
-    assert!(!extension_configured());
-    assert!(hook_status().unwrap().contains("not located"));
+    assert!(!extension_configured(crate::agents::pi::PiHost::Pi));
+    assert!(
+        hook_status(crate::agents::pi::PiHost::Pi)
+            .unwrap()
+            .contains("not located")
+    );
 }

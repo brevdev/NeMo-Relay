@@ -916,7 +916,15 @@ fn agent_inference_uses_executable_basename() {
         Some(CodingAgent::ClaudeCode)
     );
     assert_eq!(CodingAgent::infer("codex"), Some(CodingAgent::Codex));
-    assert_eq!(CodingAgent::infer("cursor-agent"), None);
+    assert_eq!(
+        CodingAgent::infer("cursor-agent"),
+        Some(CodingAgent::Cursor)
+    );
+    assert_eq!(
+        CodingAgent::infer("/usr/local/bin/omp"),
+        Some(CodingAgent::Omp)
+    );
+    assert_eq!(CodingAgent::infer("cursor"), None);
     assert_eq!(CodingAgent::infer("hermes"), None);
     assert_eq!(CodingAgent::infer("wrapper"), None);
 }

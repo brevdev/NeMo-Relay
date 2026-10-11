@@ -31,6 +31,7 @@ use std::process::ExitCode;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
+use super::PiHost;
 use super::assets::{EXTENSION_FILES, EXTENSION_VERSION};
 use crate::error::CliError;
 use crate::installation::{InstallRequest, UninstallRequest};
@@ -53,18 +54,18 @@ const STATE_FILE: &str = ".nemo-relay-install.json";
 const STATE_SCHEMA: u64 = 1;
 
 /// `~/.pi/agent/extensions/nemo-relay`, honoring pi's own directory override.
-pub(crate) fn install_root() -> Option<PathBuf> {
-    Some(super::doctor::user_extensions_dir()?.join(INSTALL_DIR_NAME))
+pub(crate) fn install_root(host: PiHost) -> Option<PathBuf> {
+    Some(super::doctor::user_extensions_dir(host)?.join(INSTALL_DIR_NAME))
 }
 
 /// Whether a Relay-managed install is present, for `uninstall all` and for diagnostics.
-pub(crate) fn is_installed() -> bool {
-    install_root().is_some_and(|root| matches!(occupant(&root), Occupant::Managed(_)))
+pub(crate) fn is_installed(host: PiHost) -> bool {
+    install_root(host).is_some_and(|root| matches!(occupant(&root), Occupant::Managed(_)))
 }
 
 /// The version of the extension a Relay-managed install left in place, if there is one.
-pub(crate) fn installed_version() -> Option<String> {
-    match occupant(&install_root()?) {
+pub(crate) fn installed_version(host: PiHost) -> Option<String> {
+    match occupant(&install_root(host)?) {
         Occupant::Managed(state) => Some(state.relay_version),
         _ => None,
     }
@@ -77,8 +78,8 @@ pub(crate) fn installed_version() -> Option<String> {
 /// quietly become the reason a *second* copy appears, because two copies double every hook
 /// and stop the launcher. `doctor` reports a project-scoped copy on its own; setup stays
 /// out of it.
-pub(crate) fn setup_install_available() -> bool {
-    install_root().is_some() && !super::doctor::extension_configured()
+pub(crate) fn setup_install_available(host: PiHost) -> bool {
+    install_root(host).is_some() && !super::doctor::extension_configured(host)
 }
 
 /// What is sitting at the install path.
@@ -261,34 +262,35 @@ fn current_dir() -> PathBuf {
     std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
 }
 
-fn unsupported_install_dir(operation: &str) -> CliError {
+fn unsupported_install_dir(host: PiHost, operation: &str) -> CliError {
+    let label = host.label();
     CliError::Install(format!(
-        "`--install-dir` does not apply to pi: pi discovers extensions under its own agent \
-         directory, so Relay has no install root to place elsewhere. Set \
-         `PI_CODING_AGENT_DIR` to move pi's whole configuration, or drop the flag to \
-         {operation} at pi's own location"
+        "`--install-dir` does not apply to {label}: {label} discovers extensions under its own \
+         agent directory, so Relay has no install root to place elsewhere. Set \
+         `PI_CODING_AGENT_DIR` to move {label}'s whole configuration, or drop the flag to \
+         {operation} at {label}'s own location"
     ))
 }
 
-fn no_agent_dir() -> CliError {
-    CliError::Install(
-        "could not resolve pi's agent directory: no home directory was found and \
-         `PI_CODING_AGENT_DIR` is unset"
-            .into(),
-    )
+fn no_agent_dir(host: PiHost) -> CliError {
+    CliError::Install(format!(
+        "could not resolve {}'s agent directory: no home directory was found and \
+         `PI_CODING_AGENT_DIR` is unset",
+        host.label()
+    ))
 }
 
-pub(crate) fn install(request: InstallRequest) -> Result<ExitCode, CliError> {
+pub(crate) fn install(host: PiHost, request: InstallRequest) -> Result<ExitCode, CliError> {
     if request.install_dir.is_some() {
-        return Err(unsupported_install_dir("install"));
+        return Err(unsupported_install_dir(host, "install"));
     }
-    let root = install_root().ok_or_else(no_agent_dir)?;
+    let root = install_root(host).ok_or_else(|| no_agent_dir(host))?;
 
     // Refuse before writing anything: a second loading copy doubles every hook, and the
     // launcher refuses to start once it exists. Checked before the occupant so a user who
     // already installed through `pi install` is told about *that* copy rather than about
     // this directory.
-    if let Some(other) = super::doctor::conflicting_extension_site(&current_dir(), &root) {
+    if let Some(other) = super::doctor::conflicting_extension_site(host, &current_dir(), &root) {
         return Err(CliError::Install(format!(
             "another copy of the NeMo Relay pi extension is already installed at {}, and pi \
              would load it beside this one. pi de-duplicates its extension set by path \
@@ -310,7 +312,8 @@ pub(crate) fn install(request: InstallRequest) -> Result<ExitCode, CliError> {
     // installing from anywhere else leaves the same project copy in place. It catches the
     // common case, which is installing from the project you are working in; the guide's
     // standing advice not to install project-scoped is what covers the rest.
-    if let Some(project) = super::doctor::project_copies_beside(&current_dir(), &root).first() {
+    if let Some(project) = super::doctor::project_copies_beside(host, &current_dir(), &root).first()
+    {
         return Err(CliError::Install(format!(
             "{} is a project-scoped copy of the NeMo Relay pi extension, and pi loads it \
              beside a user-scope install whenever this project is trusted -- so installing \
@@ -335,9 +338,9 @@ pub(crate) fn install(request: InstallRequest) -> Result<ExitCode, CliError> {
         EXTENSION_FILES.len()
     );
 
-    note_missing_host();
+    note_missing_host(host);
     if !request.skip_doctor {
-        verify_install(&root);
+        verify_install(host, &root);
     }
     Ok(ExitCode::SUCCESS)
 }
@@ -349,12 +352,13 @@ pub(crate) fn install(request: InstallRequest) -> Result<ExitCode, CliError> {
 /// extension does nothing until pi loads it, and silence here would read as a setup that
 /// is ready. Version is deliberately not probed -- that means running pi, and `doctor`
 /// already reports the floor and the verified ceiling.
-fn note_missing_host() {
-    if crate::process::resolve_executable(crate::agents::CodingAgent::Pi.executable()).is_none() {
+fn note_missing_host(host: PiHost) {
+    let label = host.label();
+    if crate::process::resolve_executable(host.agent().executable()).is_none() {
         println!(
-            "  note: `pi` was not found on PATH. The extension is installed and pi will \
-             discover it once pi is installed; run `nemo-relay doctor pi` then to check the \
-             version"
+            "  note: `{label}` was not found on PATH. The extension is installed and {label} \
+             will discover it once {label} is installed; run `nemo-relay doctor {label}` then \
+             to check the version"
         );
     }
 }
@@ -483,29 +487,30 @@ fn write_extension(root: &Path) -> Result<(), CliError> {
 /// own `settings.json` can switch an auto-discovered package off, and the symptom of that
 /// is missing spans rather than an error. Reported rather than failed, because the install
 /// itself succeeded and the fix is in pi's configuration.
-fn verify_install(root: &Path) {
-    match super::doctor::launchable_extension_path(&current_dir()) {
+fn verify_install(host: PiHost, root: &Path) {
+    let label = host.label();
+    match super::doctor::launchable_extension_path(host, &current_dir()) {
         Some(resolved) if resolved.starts_with(root) => {
-            println!("  pi extension load path: {}", resolved.display());
+            println!("  {label} extension load path: {}", resolved.display());
         }
         Some(resolved) => println!(
-            "  warning: pi resolves the NeMo Relay extension to {} rather than the install \
-             just written. Run `nemo-relay doctor pi`",
+            "  warning: {label} resolves the NeMo Relay extension to {} rather than the install \
+             just written. Run `nemo-relay doctor {label}`",
             resolved.display()
         ),
         None => println!(
-            "  warning: the install was written but pi does not resolve it -- a `packages` \
-             filter in pi's own settings.json can switch an auto-discovered package off. \
-             Run `nemo-relay doctor pi`"
+            "  warning: the install was written but {label} does not resolve it -- a `packages` \
+             filter in {label}'s own settings can switch an auto-discovered package off. \
+             Run `nemo-relay doctor {label}`"
         ),
     }
 }
 
-pub(crate) fn uninstall(request: UninstallRequest) -> Result<ExitCode, CliError> {
+pub(crate) fn uninstall(host: PiHost, request: UninstallRequest) -> Result<ExitCode, CliError> {
     if request.install_dir.is_some() {
-        return Err(unsupported_install_dir("uninstall"));
+        return Err(unsupported_install_dir(host, "uninstall"));
     }
-    let root = install_root().ok_or_else(no_agent_dir)?;
+    let root = install_root(host).ok_or_else(|| no_agent_dir(host))?;
     let state = match occupant(&root) {
         Occupant::Managed(state) => state,
         Occupant::Vacant => {

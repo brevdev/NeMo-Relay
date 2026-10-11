@@ -246,6 +246,22 @@ export default function nemoRelayExtension(pi: ExtensionAPI): void {
    * reported to the gateway as a mark, so a trace with no LLM spans says why in
    * the trace itself rather than only in the user's terminal.
    */
+  /**
+   * Point the running session at its redirected model.
+   *
+   * pi rewrites each of a provider's models in place, so the session's model follows the
+   * registration and this finds nothing to do. omp builds fresh model objects instead, and a
+   * session keeps the one it selected before this ran, so its calls would still go to the old
+   * endpoint. Re-selecting the registry's copy points it at the gateway.
+   */
+  const reselectRedirected = (ctx: ExtensionContext): void => {
+    const current = ctx.model;
+    if (!current || typeof pi.setModel !== 'function') return;
+    const updated = ctx.modelRegistry?.find?.(current.provider, current.id);
+    if (!updated || updated.baseUrl === current.baseUrl) return;
+    void pi.setModel(updated).catch(() => {});
+  };
+
   const applyRedirect = (ctx: ExtensionContext, source: string): void => {
     const active = ensureConfig(ctx);
     redirect ??= redirectConfigFromEnv(active.url);
@@ -302,6 +318,7 @@ export default function nemoRelayExtension(pi: ExtensionAPI): void {
         },
       });
       redirectedProviders.add(decision.provider);
+      reselectRedirected(ctx);
     }
     // A transient skip -- no model resolved yet, or a provider already pointed
     // at the gateway -- explains nothing, and a mark per session_start for it

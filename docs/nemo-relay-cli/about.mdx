@@ -31,7 +31,7 @@ process is host-neutral and keeps the shared user-level gateway available.
 
 Use these guides when you need to:
 
-- Observe Claude Code, Codex, or pi sessions locally.
+- Observe Claude Code, Codex, pi, omp, or Cursor CLI sessions locally.
 - Configure coding-agent hooks for NeMo Relay lifecycle events.
 - Route model-provider traffic through the local NeMo Relay gateway.
 - Install persistent Claude Code, Codex, or pi integrations without
@@ -59,6 +59,8 @@ controls.
 | Claude Code | Yes | Yes | Partial | Pre-tool hook responses are supported. LLM optimization uses gateway-routed traffic; full coverage depends on loaded Claude Code hooks. |
 | Codex | Yes | Yes | Partial | Persistent install verifies all 10 hooks in the supported schema. A parent `Stop` finalizes the bounded task when no delegated agents remain; the plugin schema does not expose `SessionEnd`. |
 | pi | Partial | Yes | No | Proof of concept. Tool and turn activity are captured through a Relay-authored pi extension, and both tool calls and model calls can be blocked. Model traffic reaches the gateway only when the gateway forwards to the endpoint every model of the selected provider would otherwise call, because pi's provider registration is provider-wide. |
+| omp | Partial | Yes | No | The pi extension, loaded by omp. Same coverage as pi, attributed to omp. |
+| Cursor CLI | Partial | No | No | Hooks only: prompts, model steps with tokens and thinking, and tool calls. Cursor's model requests go through its own backend. |
 
 For minimum agent versions, platform support, and current limitations, refer to
 the [Support Matrix](/reference/support-matrix).
@@ -81,6 +83,10 @@ Use these guide links to move from CLI setup into agent-specific instructions.
   GUI/app caveats, model provider routing, and remote-task limits.
 - [pi](/nemo-relay-cli/pi) covers the extension-based pi integration, tool
   gating, agent-run attribution, and the model-redirection gap.
+- [omp](/nemo-relay-cli/omp) covers what differs when omp, a pi fork, loads the
+  same extension.
+- [Cursor CLI](/nemo-relay-cli/cursor) covers the hook-only Cursor integration and
+  what it can and cannot record.
 
 Start with [Basic Usage](/nemo-relay-cli/basic-usage), then use the guide for the coding
 agent that you want to observe.

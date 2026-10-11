@@ -21,6 +21,7 @@
 
 use std::path::{Path, PathBuf};
 
+use super::PiHost;
 use super::launch::{PI_EXTENSION_PATH_ENV, PI_GATEWAY_URL_ENV};
 
 /// pi's per-user configuration root, `~/.pi/agent` unless overridden.
@@ -28,12 +29,6 @@ use super::launch::{PI_EXTENSION_PATH_ENV, PI_GATEWAY_URL_ENV};
 /// Mirrors `getAgentDir()` (pi `v0.84.0`, `config.ts:515-521`), including the
 /// environment override, so the preflight looks where pi will actually look.
 pub(crate) const PI_AGENT_DIR_ENV: &str = "PI_CODING_AGENT_DIR";
-
-/// pi's configuration directory name, from its `piConfig.configDir`.
-const PI_CONFIG_DIR: &str = ".pi";
-
-/// Where pi records installed packages, in both scopes.
-const PI_SETTINGS_FILE: &str = "settings.json";
 
 /// This extension's package name -- how it is told apart from anyone else's.
 /// Must match `integrations/pi/package.json`.
@@ -96,24 +91,25 @@ impl ExtensionSite {
 /// the environment variable and that scanned directories, one `doctor` run could
 /// report "pi extension not located" *and* a passing load path for the same
 /// machine, in the same output.
-pub(crate) fn hook_status() -> Result<String, String> {
-    match relay_extension_sites(&current_dir()).first() {
+pub(crate) fn hook_status(host: PiHost) -> Result<String, String> {
+    let label = host.label();
+    match relay_extension_sites(host, &current_dir()).first() {
         Some(site) => Ok(format!(
             "NeMo Relay pi extension resolved at {} ({}); hooks are emitted by the extension, \
-             not by pi itself",
+             not by {label} itself",
             site.path.display(),
             site.scope.describe()
         )),
         None => Ok(format!(
-            "NeMo Relay pi extension not located; run `nemo-relay install pi`, or set \
+            "NeMo Relay pi extension not located; run `nemo-relay install {label}`, or set \
              {PI_EXTENSION_PATH_ENV} to a copy you manage yourself"
         )),
     }
 }
 
 /// Whether *this* extension -- not merely some pi extension -- can be found.
-pub(crate) fn extension_configured() -> bool {
-    !relay_extension_sites(&current_dir()).is_empty()
+pub(crate) fn extension_configured(host: PiHost) -> bool {
+    !relay_extension_sites(host, &current_dir()).is_empty()
 }
 
 fn current_dir() -> PathBuf {
@@ -174,7 +170,7 @@ pub(crate) fn gateway_url(bind: Option<std::net::SocketAddr>) -> String {
 /// reported "no pi extension found" to a user who had just run the install
 /// command the docs recommend, and could not see a trust-gated `--local` entry
 /// at all, which is the case this whole module exists to catch.
-pub(crate) fn relay_extension_sites(cwd: &Path) -> Vec<ExtensionSite> {
+pub(crate) fn relay_extension_sites(host: PiHost, cwd: &Path) -> Vec<ExtensionSite> {
     let mut sites = Vec::new();
     if let Some(path) = extension_location() {
         sites.push(ExtensionSite {
@@ -216,37 +212,39 @@ pub(crate) fn relay_extension_sites(cwd: &Path) -> Vec<ExtensionSite> {
                 }),
         );
     };
-    if let Some(dir) = user_extensions_dir() {
+    if let Some(dir) = user_extensions_dir(host) {
         discovered(&mut sites, &dir, ExtensionScope::User);
     }
-    if let Some(agent_dir) = pi_agent_dir() {
+    if let (Some(agent_dir), Some(settings)) = (agent_dir(host), host.settings_file()) {
         listed(
             &mut sites,
-            &agent_dir.join(PI_SETTINGS_FILE),
+            &agent_dir.join(settings),
             &agent_dir,
             ExtensionScope::User,
         );
     }
-    if let Some(settings) = user_settings_path() {
+    if let Some(settings) = user_settings_path(host) {
         recorded(&mut sites, &settings, ExtensionScope::User);
     }
+    let project_config = cwd.join(host.config_dir());
     discovered(
         &mut sites,
-        &cwd.join(PI_CONFIG_DIR).join("extensions"),
+        &project_config.join("extensions"),
         ExtensionScope::Project,
     );
-    let project_config = cwd.join(PI_CONFIG_DIR);
-    listed(
-        &mut sites,
-        &project_config.join(PI_SETTINGS_FILE),
-        &project_config,
-        ExtensionScope::Project,
-    );
-    recorded(
-        &mut sites,
-        &project_config.join(PI_SETTINGS_FILE),
-        ExtensionScope::Project,
-    );
+    if let Some(settings) = host.settings_file() {
+        listed(
+            &mut sites,
+            &project_config.join(settings),
+            &project_config,
+            ExtensionScope::Project,
+        );
+        recorded(
+            &mut sites,
+            &project_config.join(settings),
+            ExtensionScope::Project,
+        );
+    }
     sites
 }
 
@@ -343,8 +341,8 @@ fn relay_extensions_listed_in_settings(settings: &Path, base: &Path) -> Vec<Reco
 /// Choosing the enabled copy leaves the disabled one disabled and loads exactly
 /// once. A disabled copy is still used when it is all there is, because `-e` makes
 /// it work.
-pub(crate) fn launchable_extension_path(cwd: &Path) -> Option<PathBuf> {
-    let sites = relay_extension_sites(cwd);
+pub(crate) fn launchable_extension_path(host: PiHost, cwd: &Path) -> Option<PathBuf> {
+    let sites = relay_extension_sites(host, cwd);
     let usable = || {
         sites
             .iter()
@@ -393,9 +391,13 @@ pub(crate) fn launchable_extension_path(cwd: &Path) -> Option<PathBuf> {
 /// is a doubled trace with a note rather than a blocked launch, which is the right
 /// side to be wrong on: `-p`, `--mode json` and `--mode rpc` never prompt for trust,
 /// so untrusted is the common state.
-pub(crate) fn conflicting_extension_site(cwd: &Path, launched: &Path) -> Option<PathBuf> {
+pub(crate) fn conflicting_extension_site(
+    host: PiHost,
+    cwd: &Path,
+    launched: &Path,
+) -> Option<PathBuf> {
     let launched_root = package_root(launched);
-    relay_extension_sites(cwd)
+    relay_extension_sites(host, cwd)
         .into_iter()
         .filter(ExtensionSite::loads_on_its_own)
         .find(|site| package_root(&site.path) != launched_root)
@@ -410,9 +412,9 @@ pub(crate) fn conflicting_extension_site(cwd: &Path, launched: &Path) -> Option<
 /// the launched package is the same package -- pi de-duplicates by path, so it
 /// loads once. Warning about either would describe a doubled trace that cannot
 /// happen.
-pub(crate) fn project_copies_beside(cwd: &Path, launched: &Path) -> Vec<PathBuf> {
+pub(crate) fn project_copies_beside(host: PiHost, cwd: &Path, launched: &Path) -> Vec<PathBuf> {
     let launched_root = package_root(launched);
-    relay_extension_sites(cwd)
+    relay_extension_sites(host, cwd)
         .into_iter()
         .filter(|site| {
             site.scope == ExtensionScope::Project
@@ -815,26 +817,26 @@ fn manifest_extension_entries(path: &Path) -> Vec<String> {
 }
 
 /// `<agent dir>/settings.json`, where `pi install` records a user-scope package.
-fn user_settings_path() -> Option<PathBuf> {
-    Some(pi_agent_dir()?.join(PI_SETTINGS_FILE))
+fn user_settings_path(host: PiHost) -> Option<PathBuf> {
+    Some(agent_dir(host)?.join(host.settings_file()?))
 }
 
 /// `~/.pi/agent`, honoring pi's own directory override.
-pub(super) fn pi_agent_dir() -> Option<PathBuf> {
+pub(super) fn agent_dir(host: PiHost) -> Option<PathBuf> {
     match std::env::var_os(PI_AGENT_DIR_ENV) {
         Some(dir) if !dir.is_empty() => Some(PathBuf::from(dir)),
         _ => Some(
             crate::agents::shared::host::home_dir()
                 .ok()?
-                .join(PI_CONFIG_DIR)
+                .join(host.config_dir())
                 .join("agent"),
         ),
     }
 }
 
 /// `~/.pi/agent/extensions`, the auto-discovery directory.
-pub(super) fn user_extensions_dir() -> Option<PathBuf> {
-    Some(pi_agent_dir()?.join("extensions"))
+pub(super) fn user_extensions_dir(host: PiHost) -> Option<PathBuf> {
+    Some(agent_dir(host)?.join("extensions"))
 }
 
 #[cfg(test)]

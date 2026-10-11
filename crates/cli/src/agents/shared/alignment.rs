@@ -870,6 +870,11 @@ pub(crate) fn route_event_through_alias(
             event.metadata = merge_metadata(event.metadata, metadata);
             (NormalizedEvent::LlmHint(event), None)
         }
+        NormalizedEvent::LlmObserved(mut event) => {
+            event.session_id = alias.parent_session_id;
+            event.metadata = merge_metadata(event.metadata, metadata);
+            (NormalizedEvent::LlmObserved(event), None)
+        }
         NormalizedEvent::ToolStarted(mut event) => {
             route_tool_event(&mut event, &alias, metadata);
             (NormalizedEvent::ToolStarted(event), None)

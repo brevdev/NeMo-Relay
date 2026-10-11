@@ -70,6 +70,60 @@ pub(super) fn parse_version(raw: &str) -> Option<Version> {
     Version::parse(raw.trim()).ok()
 }
 
+/// A host that loads the pi extension: pi itself, or omp, its fork.
+///
+/// omp (oh-my-pi) runs pi's extension API, so both load the same extension and post the same
+/// hooks. They differ only in where they keep it: omp's agent directory is `~/.omp/agent`
+/// (`PI_CONFIG_DIR` renames the `.omp` part), both honor `PI_CODING_AGENT_DIR`, and omp keeps its
+/// settings in YAML rather than pi's `settings.json`, so settings-recorded installs are read for
+/// pi only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PiHost {
+    Pi,
+    Omp,
+}
+
+impl PiHost {
+    /// The host for a pi-family agent. Only called on `Pi` and `Omp`.
+    pub(crate) const fn for_agent(agent: super::CodingAgent) -> Self {
+        match agent {
+            super::CodingAgent::Omp => Self::Omp,
+            _ => Self::Pi,
+        }
+    }
+
+    pub(crate) const fn agent(self) -> super::CodingAgent {
+        match self {
+            Self::Pi => super::CodingAgent::Pi,
+            Self::Omp => super::CodingAgent::Omp,
+        }
+    }
+
+    /// The host's own name, used in commands and messages.
+    pub(crate) const fn label(self) -> &'static str {
+        self.agent().label()
+    }
+
+    /// The user and project configuration directory name: `.pi`, or omp's `.omp`.
+    pub(crate) fn config_dir(self) -> String {
+        match self {
+            Self::Pi => ".pi".to_string(),
+            Self::Omp => std::env::var("PI_CONFIG_DIR")
+                .ok()
+                .filter(|dir| !dir.is_empty())
+                .unwrap_or_else(|| ".omp".to_string()),
+        }
+    }
+
+    /// The settings file where `pi install` records packages; omp has none this reads.
+    pub(crate) const fn settings_file(self) -> Option<&'static str> {
+        match self {
+            Self::Pi => Some("settings.json"),
+            Self::Omp => None,
+        }
+    }
+}
+
 #[cfg(test)]
 #[path = "../../../tests/coverage/agents/pi_tests.rs"]
 mod tests;

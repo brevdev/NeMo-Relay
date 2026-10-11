@@ -2210,7 +2210,7 @@ fn cli_agents_json_emits_supported_agent_shapes() {
         .collect::<std::collections::BTreeSet<_>>();
     assert_eq!(
         names,
-        std::collections::BTreeSet::from(["claude", "codex", "pi"])
+        std::collections::BTreeSet::from(["claude", "codex", "cursor", "omp", "pi"])
     );
     assert!(agents.iter().all(|agent| agent["status"].is_string()));
 }
@@ -3431,19 +3431,28 @@ fn cli_pi_shortcut_prepares_a_pi_launch_with_the_extension() {
 }
 
 #[test]
-fn cli_rejects_removed_cursor_entry_points() {
+fn cli_installs_cursor_hooks_but_has_no_cursor_launcher() {
+    // Cursor reads hooks only from its hooks.json, so a per-run gateway has nothing to hand it:
+    // Cursor is observed through `install cursor`, and there is no `nemo-relay cursor`.
     let output = Command::new(gateway_bin()).arg("cursor").output().unwrap();
-
     assert_eq!(output.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&output.stderr).contains("unrecognized subcommand 'cursor'"));
 
+    let temp = tempfile::tempdir().unwrap();
     let output = Command::new(gateway_bin())
-        .args(["hook-forward", "cursor"])
+        .env("XDG_CONFIG_HOME", temp.path().join("xdg"))
+        .env("HOME", temp.path())
+        .args(["install", "cursor", "--dry-run"])
         .output()
         .unwrap();
-
-    assert_eq!(output.status.code(), Some(2));
-    assert!(String::from_utf8_lossy(&output.stderr).contains("invalid value 'cursor'"));
+    assert!(
+        output.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("Plan: add"));
+    assert!(!temp.path().join(".cursor/hooks.json").exists());
 }
 
 #[test]

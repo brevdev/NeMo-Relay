@@ -231,6 +231,7 @@ async fn run_command(
         Command::Claude(command) => run::easy_path(CodingAgent::ClaudeCode, command, server).await,
         Command::Codex(command) => run::easy_path(CodingAgent::Codex, command, server).await,
         Command::Pi(command) => run::easy_path(CodingAgent::Pi, command, server).await,
+        Command::Omp(command) => run::easy_path(CodingAgent::Omp, command, server).await,
         Command::Mcp => mcp::execute(server).await,
         Command::Gateway(command) => {
             gateway::execute(command, server, bootstrap_shutdown_token).await

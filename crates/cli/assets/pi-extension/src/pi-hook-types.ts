@@ -224,7 +224,7 @@ export type ExtensionContext = {
    * Optional because a caller may not supply one; without it the check degrades
    * to per-model, which is unsound for a provider that mixes API families.
    */
-  modelRegistry?: { getAll(): PiModel[] };
+  modelRegistry?: { getAll(): PiModel[]; find?(provider: string, modelId: string): PiModel | undefined };
 };
 
 export type ExtensionHandler<TEvent, TResult = void> = (
@@ -262,4 +262,7 @@ export type ExtensionAPI = {
     name: string,
     config: { baseUrl?: string; headers?: Record<string, string> },
   ): void;
+
+  /** Select the session's model. omp re-reads a provider's models only through this. */
+  setModel?(model: PiModel): Promise<boolean>;
 };

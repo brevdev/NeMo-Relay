@@ -607,7 +607,7 @@ async fn agent_preflight_checks(
 /// installed at all".
 fn pi_managed_install_check() -> Option<Check> {
     const NAME: &str = "pi extension install";
-    let installed = crate::agents::pi::install::installed_version()?;
+    let installed = crate::agents::pi::install::installed_version(crate::agents::pi::PiHost::Pi)?;
     let current = crate::agents::pi::assets::EXTENSION_VERSION;
     if installed == current {
         return Some(Check {
@@ -638,7 +638,8 @@ fn pi_managed_install_check() -> Option<Check> {
 /// place a user finds out before wondering why NeMo Relay "does nothing".
 fn pi_extension_trust_check(cwd: &Path) -> Check {
     const NAME: &str = "pi extension load path";
-    let sites = crate::agents::pi::doctor::relay_extension_sites(cwd);
+    let sites =
+        crate::agents::pi::doctor::relay_extension_sites(crate::agents::pi::PiHost::Pi, cwd);
     let project_sites: Vec<&crate::agents::pi::doctor::ExtensionSite> = sites
         .iter()
         .filter(|site| site.scope == crate::agents::pi::doctor::ExtensionScope::Project)
@@ -649,9 +650,13 @@ fn pi_extension_trust_check(cwd: &Path) -> Check {
     // Asked of the copy the launcher would choose, not of whichever site sorts first: a copy pi's
     // settings switch off is not one of the two that load, and naming it here would report a
     // duplicate that does not exist.
-    if let Some(launched) = crate::agents::pi::doctor::launchable_extension_path(cwd)
-        && let Some(duplicate) =
-            crate::agents::pi::doctor::conflicting_extension_site(cwd, &launched)
+    if let Some(launched) =
+        crate::agents::pi::doctor::launchable_extension_path(crate::agents::pi::PiHost::Pi, cwd)
+        && let Some(duplicate) = crate::agents::pi::doctor::conflicting_extension_site(
+            crate::agents::pi::PiHost::Pi,
+            cwd,
+            &launched,
+        )
     {
         return Check {
             name: NAME,

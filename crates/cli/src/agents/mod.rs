@@ -5,6 +5,8 @@
 
 pub(crate) mod claude;
 pub(crate) mod codex;
+pub(crate) mod cursor;
+pub(crate) mod omp;
 pub(crate) mod pi;
 pub(crate) mod shared;
 
@@ -17,6 +19,10 @@ pub(crate) enum CodingAgent {
     ClaudeCode,
     Codex,
     Pi,
+    /// omp (oh-my-pi), a pi fork that loads the same extension.
+    Omp,
+    /// Cursor's CLI, observed through hooks installed in its `hooks.json`.
+    Cursor,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -70,7 +76,13 @@ macro_rules! pi_marketplace_unreachable {
 }
 
 impl CodingAgent {
-    pub(crate) const ALL: [Self; 3] = [Self::ClaudeCode, Self::Codex, Self::Pi];
+    pub(crate) const ALL: [Self; 5] = [
+        Self::ClaudeCode,
+        Self::Codex,
+        Self::Pi,
+        Self::Omp,
+        Self::Cursor,
+    ];
 
     /// Every agent Relay installs *through the plugin marketplace*.
     ///
@@ -89,6 +101,8 @@ impl CodingAgent {
             Self::ClaudeCode => claude::DESCRIPTOR,
             Self::Codex => codex::DESCRIPTOR,
             Self::Pi => pi::DESCRIPTOR,
+            Self::Omp => omp::DESCRIPTOR,
+            Self::Cursor => cursor::DESCRIPTOR,
         }
     }
 
@@ -103,6 +117,8 @@ impl CodingAgent {
             Self::ClaudeCode => crate::events::AgentKind::ClaudeCode,
             Self::Codex => crate::events::AgentKind::Codex,
             Self::Pi => crate::events::AgentKind::Pi,
+            Self::Omp => crate::events::AgentKind::Omp,
+            Self::Cursor => crate::events::AgentKind::Cursor,
         }
     }
 
@@ -202,6 +218,8 @@ impl CodingAgent {
             Self::ClaudeCode => claude::parse_version(raw),
             Self::Codex => codex::parse_version(raw),
             Self::Pi => pi::parse_version(raw),
+            Self::Omp => omp::parse_version(raw),
+            Self::Cursor => cursor::parse_version(raw),
         }
     }
 
@@ -224,6 +242,8 @@ impl CodingAgent {
             "claude" | "claude-code" => Some(Self::ClaudeCode),
             "codex" => Some(Self::Codex),
             "pi" => Some(Self::Pi),
+            "omp" => Some(Self::Omp),
+            "cursor-agent" => Some(Self::Cursor),
             _ => None,
         }
     }
@@ -254,7 +274,7 @@ impl crate::installation::marketplace::MarketplaceHost for CodingAgent {
         match self {
             Self::Codex => &[".agents", "plugins", "marketplace.json"],
             Self::ClaudeCode => &[".claude-plugin", "marketplace.json"],
-            Self::Pi => pi_marketplace_unreachable!(),
+            Self::Pi | Self::Omp | Self::Cursor => pi_marketplace_unreachable!(),
         }
     }
 
@@ -262,7 +282,7 @@ impl crate::installation::marketplace::MarketplaceHost for CodingAgent {
         match self {
             Self::Codex => &[".codex-plugin", "plugin.json"],
             Self::ClaudeCode => &[".claude-plugin", "plugin.json"],
-            Self::Pi => pi_marketplace_unreachable!(),
+            Self::Pi | Self::Omp | Self::Cursor => pi_marketplace_unreachable!(),
         }
     }
 
@@ -317,7 +337,7 @@ impl crate::installation::marketplace::MarketplaceHost for CodingAgent {
                 "--scope".into(),
                 "user".into(),
             ],
-            Self::Pi => pi_marketplace_unreachable!(),
+            Self::Pi | Self::Omp | Self::Cursor => pi_marketplace_unreachable!(),
         }
     }
 
@@ -325,7 +345,7 @@ impl crate::installation::marketplace::MarketplaceHost for CodingAgent {
         match self {
             Self::Codex => vec!["plugin".into(), "remove".into(), plugin_id.into()],
             Self::ClaudeCode => vec!["plugin".into(), "uninstall".into(), plugin_name.into()],
-            Self::Pi => pi_marketplace_unreachable!(),
+            Self::Pi | Self::Omp | Self::Cursor => pi_marketplace_unreachable!(),
         }
     }
 
@@ -341,7 +361,7 @@ impl crate::installation::marketplace::MarketplaceHost for CodingAgent {
             Self::ClaudeCode => {
                 crate::installation::marketplace::host::claude_registration_report(options, runner)
             }
-            Self::Pi => Err(PI_MARKETPLACE_UNSUPPORTED.to_string()),
+            Self::Pi | Self::Omp | Self::Cursor => Err(PI_MARKETPLACE_UNSUPPORTED.to_string()),
         }
     }
 
@@ -357,7 +377,7 @@ impl crate::installation::marketplace::MarketplaceHost for CodingAgent {
             Self::ClaudeCode => format!(
                 "cannot safely replace or uninstall an existing Claude Code plugin because its MCP generation marker {problem}; close all Claude Code clients and standalone `nemo-relay mcp` processes, run `claude plugin uninstall nemo-relay-plugin` and `claude plugin marketplace remove nemo-relay-local`, remove the stale marketplace and state from the selected install directory, then run `nemo-relay install claude-code --force` to create a fenced install (and `nemo-relay uninstall claude-code` afterward if removal was intended)"
             ),
-            Self::Pi => pi_marketplace_unreachable!(),
+            Self::Pi | Self::Omp | Self::Cursor => pi_marketplace_unreachable!(),
         }
     }
 
@@ -384,7 +404,7 @@ impl crate::installation::marketplace::MarketplaceHost for CodingAgent {
                     || generation_fence.exists()
             }
             // pi installs nothing through this surface, so nothing to detect.
-            Self::Pi => false,
+            Self::Pi | Self::Omp | Self::Cursor => false,
         }
     }
 
@@ -446,7 +466,7 @@ pub(crate) fn marketplace_manifest(
     match agent {
         CodingAgent::Codex => codex::assets::marketplace_manifest(marketplace, plugin),
         CodingAgent::ClaudeCode => claude::assets::marketplace_manifest(marketplace, plugin),
-        CodingAgent::Pi => pi_marketplace_unreachable!(),
+        CodingAgent::Pi | CodingAgent::Omp | CodingAgent::Cursor => pi_marketplace_unreachable!(),
     }
 }
 
@@ -454,7 +474,7 @@ pub(crate) fn plugin_manifest(agent: CodingAgent, plugin: &str) -> serde_json::V
     match agent {
         CodingAgent::Codex => codex::assets::plugin_manifest(plugin),
         CodingAgent::ClaudeCode => claude::assets::plugin_manifest(plugin),
-        CodingAgent::Pi => pi_marketplace_unreachable!(),
+        CodingAgent::Pi | CodingAgent::Omp | CodingAgent::Cursor => pi_marketplace_unreachable!(),
     }
 }
 
@@ -466,7 +486,9 @@ pub(crate) fn plugin_mcp_config(
         CodingAgent::Codex => codex::assets::mcp_config(server),
         CodingAgent::ClaudeCode => Ok(claude::assets::mcp_config(server)),
         // pi ships no MCP client, so a plugin-owned server would have no consumer.
-        CodingAgent::Pi => Err(PI_MARKETPLACE_UNSUPPORTED.to_string()),
+        CodingAgent::Pi | CodingAgent::Omp | CodingAgent::Cursor => {
+            Err(PI_MARKETPLACE_UNSUPPORTED.to_string())
+        }
     }
 }
 
@@ -498,7 +520,20 @@ pub(crate) fn prepare_launch(
         // pi is the only agent whose launcher needs the gateway's upstream configuration: its
         // extension redirects model traffic only when the selected model already targets that
         // upstream. See `pi::launch::prepare`.
-        CodingAgent::Pi => pi::launch::prepare(launch, gateway_url, &resolved.gateway),
+        CodingAgent::Pi => {
+            pi::launch::prepare(pi::PiHost::Pi, launch, gateway_url, &resolved.gateway)
+        }
+        CodingAgent::Omp => {
+            pi::launch::prepare(pi::PiHost::Omp, launch, gateway_url, &resolved.gateway)
+        }
+        // Cursor reads hooks only from its hooks.json, so there is nothing a per-run gateway can
+        // hand it; it is observed through `nemo-relay install cursor` and the shared gateway.
+        CodingAgent::Cursor => Err(crate::error::CliError::Launch(
+            "Cursor is observed through hooks installed in its hooks.json, not through a launcher: \
+             run `nemo-relay install cursor`, keep the shared gateway running with \
+             `nemo-relay gateway`, then run `cursor-agent` directly"
+                .into(),
+        )),
     }
 }
 
@@ -514,6 +549,8 @@ pub(crate) const fn config(
         CodingAgent::ClaudeCode => &configs.claude,
         CodingAgent::Codex => &configs.codex,
         CodingAgent::Pi => &configs.pi,
+        CodingAgent::Omp => &configs.omp,
+        CodingAgent::Cursor => &configs.cursor,
     }
 }
 
@@ -524,7 +561,13 @@ pub(crate) fn hook_status(
     match agent {
         CodingAgent::Codex => codex::doctor::hook_status(),
         CodingAgent::ClaudeCode => claude::doctor::hook_status(),
-        CodingAgent::Pi => pi::doctor::hook_status(),
+        CodingAgent::Pi => pi::doctor::hook_status(pi::PiHost::Pi),
+        CodingAgent::Omp => pi::doctor::hook_status(pi::PiHost::Omp),
+        CodingAgent::Cursor => Ok(if cursor::install::is_installed() {
+            "NeMo Relay hooks installed in ~/.cursor/hooks.json".to_string()
+        } else {
+            "NeMo Relay hooks not installed; run `nemo-relay install cursor`".to_string()
+        }),
     }
 }
 
@@ -555,7 +598,9 @@ pub(crate) fn snapshot_setup(agent: CodingAgent) -> Result<SetupSnapshot, String
     match agent {
         CodingAgent::Codex => snapshot_codex_setup().map(SetupSnapshot::Codex),
         CodingAgent::ClaudeCode => snapshot_claude_setup().map(SetupSnapshot::Claude),
-        CodingAgent::Pi => Err(PI_MARKETPLACE_UNSUPPORTED.to_string()),
+        CodingAgent::Pi | CodingAgent::Omp | CodingAgent::Cursor => {
+            Err(PI_MARKETPLACE_UNSUPPORTED.to_string())
+        }
     }
 }
 
@@ -577,7 +622,9 @@ pub(crate) fn setup_marketplace_plugin(
             install_codex_plugin_with_generation(gateway_url, plugin_root, generation_token)
         }
         CodingAgent::ClaudeCode => enable_claude_provider(gateway_url),
-        CodingAgent::Pi => Err(PI_MARKETPLACE_UNSUPPORTED.to_string()),
+        CodingAgent::Pi | CodingAgent::Omp | CodingAgent::Cursor => {
+            Err(PI_MARKETPLACE_UNSUPPORTED.to_string())
+        }
     }
 }
 
@@ -589,7 +636,9 @@ pub(crate) fn uninstall_marketplace_plugin(
     match agent {
         CodingAgent::Codex => uninstall_codex_plugin(gateway_url, plugin_root),
         CodingAgent::ClaudeCode => restore_claude_provider(gateway_url),
-        CodingAgent::Pi => Err(PI_MARKETPLACE_UNSUPPORTED.to_string()),
+        CodingAgent::Pi | CodingAgent::Omp | CodingAgent::Cursor => {
+            Err(PI_MARKETPLACE_UNSUPPORTED.to_string())
+        }
     }
 }
 
@@ -607,7 +656,9 @@ pub(crate) fn doctor_marketplace_plugin(
             generation_token,
         ),
         CodingAgent::ClaudeCode => doctor_plugin(CodingAgent::ClaudeCode, gateway_url, plugin_root),
-        CodingAgent::Pi => Err(PI_MARKETPLACE_UNSUPPORTED.to_string()),
+        CodingAgent::Pi | CodingAgent::Omp | CodingAgent::Cursor => {
+            Err(PI_MARKETPLACE_UNSUPPORTED.to_string())
+        }
     }
 }
 
@@ -621,7 +672,9 @@ pub(crate) fn doctor_marketplace_plugin_json(
         CodingAgent::ClaudeCode => {
             doctor_plugin_json(CodingAgent::ClaudeCode, gateway_url, plugin_root)
         }
-        CodingAgent::Pi => Err(PI_MARKETPLACE_UNSUPPORTED.to_string()),
+        CodingAgent::Pi | CodingAgent::Omp | CodingAgent::Cursor => {
+            Err(PI_MARKETPLACE_UNSUPPORTED.to_string())
+        }
     }
 }
 
@@ -634,7 +687,9 @@ pub(crate) fn install_integration(
         CodingAgent::ClaudeCode => claude::install::install(command),
         // Not a marketplace install: pi auto-discovers a package directory under its own
         // agent directory, so Relay writes one there instead of synthesizing a manifest.
-        CodingAgent::Pi => pi::install::install(command),
+        CodingAgent::Pi => pi::install::install(pi::PiHost::Pi, command),
+        CodingAgent::Omp => pi::install::install(pi::PiHost::Omp, command),
+        CodingAgent::Cursor => cursor::install::install(command),
     }
 }
 
@@ -645,7 +700,9 @@ pub(crate) fn uninstall_integration(
     match agent {
         CodingAgent::Codex => codex::install::uninstall(command),
         CodingAgent::ClaudeCode => claude::install::uninstall(command),
-        CodingAgent::Pi => pi::install::uninstall(command),
+        CodingAgent::Pi => pi::install::uninstall(pi::PiHost::Pi, command),
+        CodingAgent::Omp => pi::install::uninstall(pi::PiHost::Omp, command),
+        CodingAgent::Cursor => cursor::install::uninstall(command),
     }
 }
 
@@ -683,7 +740,12 @@ pub(crate) fn installed_integrations(
     candidates
         .iter()
         .copied()
-        .filter(|agent| !matches!(agent, CodingAgent::Pi))
+        .filter(|agent| {
+            !matches!(
+                agent,
+                CodingAgent::Pi | CodingAgent::Omp | CodingAgent::Cursor
+            )
+        })
         .filter(|agent| {
             crate::installation::marketplace::persisted_state_exists(*agent, &install_dir)
                 || (include_local_install
@@ -709,8 +771,13 @@ pub(crate) fn uninstallable_integrations(
     include_local_install: bool,
 ) -> Vec<CodingAgent> {
     let mut agents = installed_integrations(candidates, install_dir, include_local_install);
-    if candidates.contains(&CodingAgent::Pi) && pi::install::is_installed() {
-        agents.push(CodingAgent::Pi);
+    for host in [pi::PiHost::Pi, pi::PiHost::Omp] {
+        if candidates.contains(&host.agent()) && pi::install::is_installed(host) {
+            agents.push(host.agent());
+        }
+    }
+    if candidates.contains(&CodingAgent::Cursor) && cursor::install::is_installed() {
+        agents.push(CodingAgent::Cursor);
     }
     agents
 }
@@ -971,15 +1038,28 @@ pub(crate) fn doctor_plugin_json(
         // pi's hooks live inside a user-loaded extension rather than in a
         // NeMo Relay-managed plugin root, so the only checkable fact here is
         // whether that extension is discoverable.
-        CodingAgent::Pi => {
-            let extension = pi::doctor::extension_configured();
+        CodingAgent::Pi | CodingAgent::Omp => {
+            let host = pi::PiHost::for_agent(agent);
+            let extension = pi::doctor::extension_configured(host);
             (
                 json!({
                     "plugin_binary": plugin_binary,
                     "sidecar_running": sidecar_running,
-                    "pi_extension_located": extension
+                    format!("{}_extension_located", host.label()): extension
                 }),
                 plugin_binary && extension,
+                None,
+            )
+        }
+        CodingAgent::Cursor => {
+            let hooks = cursor::install::is_installed();
+            (
+                json!({
+                    "plugin_binary": plugin_binary,
+                    "sidecar_running": sidecar_running,
+                    "cursor_hooks_installed": hooks
+                }),
+                plugin_binary && hooks,
                 None,
             )
         }
@@ -1042,9 +1122,19 @@ fn doctor_ok(
                 print_info("codex hook trust", &trust.summary());
             }
         }
-        CodingAgent::Pi => {
-            ok &= print_check("pi extension located", pi::doctor::extension_configured());
-            print_info("pi hooks", &pi::doctor::hook_status()?);
+        CodingAgent::Pi | CodingAgent::Omp => {
+            let host = pi::PiHost::for_agent(agent);
+            ok &= print_check(
+                &format!("{} extension located", host.label()),
+                pi::doctor::extension_configured(host),
+            );
+            print_info(
+                &format!("{} hooks", host.label()),
+                &pi::doctor::hook_status(host)?,
+            );
+        }
+        CodingAgent::Cursor => {
+            ok &= print_check("Cursor hooks installed", cursor::install::is_installed());
         }
     }
     Ok(ok)

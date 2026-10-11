@@ -37,7 +37,7 @@ fn removal(dry_run: bool) -> UninstallRequest {
 }
 
 fn root() -> PathBuf {
-    install_root().expect("PI_CODING_AGENT_DIR is set for these tests")
+    install_root(crate::agents::pi::PiHost::Pi).expect("PI_CODING_AGENT_DIR is set for these tests")
 }
 
 /// A copy of the extension pi would recognize, placed by hand rather than by Relay.
@@ -56,7 +56,10 @@ fn install_writes_every_file_and_records_what_it_wrote() {
     let temp = tempfile::tempdir().unwrap();
     let _scope = scoped(temp.path());
 
-    assert_eq!(install(request(false, false)).unwrap(), ExitCode::SUCCESS);
+    assert_eq!(
+        install(crate::agents::pi::PiHost::Pi, request(false, false)).unwrap(),
+        ExitCode::SUCCESS
+    );
 
     let root = root();
     for file in EXTENSION_FILES {
@@ -65,9 +68,12 @@ fn install_writes_every_file_and_records_what_it_wrote() {
         assert_eq!(written, file.contents, "{} was written wrong", file.path);
     }
     // The point of installing: pi's own discovery finds it, with no variable set.
-    assert!(is_installed());
-    assert!(extension_configured());
-    assert_eq!(installed_version().as_deref(), Some(EXTENSION_VERSION));
+    assert!(is_installed(crate::agents::pi::PiHost::Pi));
+    assert!(extension_configured(crate::agents::pi::PiHost::Pi));
+    assert_eq!(
+        installed_version(crate::agents::pi::PiHost::Pi).as_deref(),
+        Some(EXTENSION_VERSION)
+    );
 }
 
 #[test]
@@ -75,10 +81,13 @@ fn a_dry_run_writes_nothing() {
     let temp = tempfile::tempdir().unwrap();
     let _scope = scoped(temp.path());
 
-    assert_eq!(install(request(false, true)).unwrap(), ExitCode::SUCCESS);
+    assert_eq!(
+        install(crate::agents::pi::PiHost::Pi, request(false, true)).unwrap(),
+        ExitCode::SUCCESS
+    );
 
     assert!(!root().exists());
-    assert!(!is_installed());
+    assert!(!is_installed(crate::agents::pi::PiHost::Pi));
 }
 
 /// Re-running over Relay's own untouched files needs no flag.
@@ -90,9 +99,12 @@ fn reinstalling_over_an_untouched_managed_install_needs_no_force() {
     let temp = tempfile::tempdir().unwrap();
     let _scope = scoped(temp.path());
 
-    install(request(false, false)).unwrap();
-    assert_eq!(install(request(false, false)).unwrap(), ExitCode::SUCCESS);
-    assert!(is_installed());
+    install(crate::agents::pi::PiHost::Pi, request(false, false)).unwrap();
+    assert_eq!(
+        install(crate::agents::pi::PiHost::Pi, request(false, false)).unwrap(),
+        ExitCode::SUCCESS
+    );
+    assert!(is_installed(crate::agents::pi::PiHost::Pi));
 }
 
 /// The `cp -r` the guide documents lands in this same directory, and it is not Relay's.
@@ -105,7 +117,9 @@ fn install_refuses_a_directory_relay_did_not_write_even_with_force() {
     let sentinel = std::fs::read_to_string(root.join("index.ts")).unwrap();
 
     for force in [false, true] {
-        let error = install(request(force, false)).unwrap_err().to_string();
+        let error = install(crate::agents::pi::PiHost::Pi, request(force, false))
+            .unwrap_err()
+            .to_string();
         assert!(
             error.contains("NeMo Relay did not write"),
             "force={force} gave: {error}"
@@ -122,15 +136,20 @@ fn install_refuses_a_directory_relay_did_not_write_even_with_force() {
 fn install_refuses_to_overwrite_an_edited_file_without_force() {
     let temp = tempfile::tempdir().unwrap();
     let _scope = scoped(temp.path());
-    install(request(false, false)).unwrap();
+    install(crate::agents::pi::PiHost::Pi, request(false, false)).unwrap();
     let edited = root().join("index.ts");
     std::fs::write(&edited, "// mine now").unwrap();
 
-    let error = install(request(false, false)).unwrap_err().to_string();
+    let error = install(crate::agents::pi::PiHost::Pi, request(false, false))
+        .unwrap_err()
+        .to_string();
     assert!(error.contains("index.ts"), "{error}");
     assert_eq!(std::fs::read_to_string(&edited).unwrap(), "// mine now");
 
-    assert_eq!(install(request(true, false)).unwrap(), ExitCode::SUCCESS);
+    assert_eq!(
+        install(crate::agents::pi::PiHost::Pi, request(true, false)).unwrap(),
+        ExitCode::SUCCESS
+    );
     assert_ne!(std::fs::read_to_string(&edited).unwrap(), "// mine now");
 }
 
@@ -145,7 +164,9 @@ fn install_refuses_when_another_copy_would_load_beside_it() {
     let other = temp.path().join("extensions").join("mine");
     write_unmanaged_copy(&other);
 
-    let error = install(request(false, false)).unwrap_err().to_string();
+    let error = install(crate::agents::pi::PiHost::Pi, request(false, false))
+        .unwrap_err()
+        .to_string();
 
     assert!(error.contains("already installed at"), "{error}");
     assert!(
@@ -159,12 +180,15 @@ fn install_refuses_when_another_copy_would_load_beside_it() {
 fn uninstall_removes_what_it_wrote_and_prunes_the_directory() {
     let temp = tempfile::tempdir().unwrap();
     let _scope = scoped(temp.path());
-    install(request(false, false)).unwrap();
+    install(crate::agents::pi::PiHost::Pi, request(false, false)).unwrap();
 
-    assert_eq!(uninstall(removal(false)).unwrap(), ExitCode::SUCCESS);
+    assert_eq!(
+        uninstall(crate::agents::pi::PiHost::Pi, removal(false)).unwrap(),
+        ExitCode::SUCCESS
+    );
 
     assert!(!root().exists(), "the install directory should be gone");
-    assert!(!is_installed());
+    assert!(!is_installed(crate::agents::pi::PiHost::Pi));
 }
 
 /// A file the user edited is the user's, so uninstall leaves it and says so.
@@ -172,16 +196,19 @@ fn uninstall_removes_what_it_wrote_and_prunes_the_directory() {
 fn uninstall_keeps_an_edited_file_and_the_directory_holding_it() {
     let temp = tempfile::tempdir().unwrap();
     let _scope = scoped(temp.path());
-    install(request(false, false)).unwrap();
+    install(crate::agents::pi::PiHost::Pi, request(false, false)).unwrap();
     let edited = root().join("src").join("user-bash.ts");
     std::fs::write(&edited, "// mine").unwrap();
 
-    assert_eq!(uninstall(removal(false)).unwrap(), ExitCode::SUCCESS);
+    assert_eq!(
+        uninstall(crate::agents::pi::PiHost::Pi, removal(false)).unwrap(),
+        ExitCode::SUCCESS
+    );
 
     assert_eq!(std::fs::read_to_string(&edited).unwrap(), "// mine");
     assert!(!root().join("index.ts").exists(), "unedited files still go");
     assert!(
-        !is_installed(),
+        !is_installed(crate::agents::pi::PiHost::Pi),
         "the state file is gone, so nothing is managed"
     );
 }
@@ -193,7 +220,9 @@ fn uninstall_refuses_a_directory_relay_did_not_write() {
     let root = root();
     write_unmanaged_copy(&root);
 
-    let error = uninstall(removal(false)).unwrap_err().to_string();
+    let error = uninstall(crate::agents::pi::PiHost::Pi, removal(false))
+        .unwrap_err()
+        .to_string();
 
     assert!(error.contains("not Relay's to remove"), "{error}");
     assert!(root.join("index.ts").exists());
@@ -204,7 +233,9 @@ fn uninstall_reports_when_there_is_nothing_installed() {
     let temp = tempfile::tempdir().unwrap();
     let _scope = scoped(temp.path());
 
-    let error = uninstall(removal(false)).unwrap_err().to_string();
+    let error = uninstall(crate::agents::pi::PiHost::Pi, removal(false))
+        .unwrap_err()
+        .to_string();
 
     assert!(
         error.contains("no NeMo Relay-managed pi extension install"),
@@ -216,11 +247,14 @@ fn uninstall_reports_when_there_is_nothing_installed() {
 fn a_dry_run_uninstall_removes_nothing() {
     let temp = tempfile::tempdir().unwrap();
     let _scope = scoped(temp.path());
-    install(request(false, false)).unwrap();
+    install(crate::agents::pi::PiHost::Pi, request(false, false)).unwrap();
 
-    assert_eq!(uninstall(removal(true)).unwrap(), ExitCode::SUCCESS);
+    assert_eq!(
+        uninstall(crate::agents::pi::PiHost::Pi, removal(true)).unwrap(),
+        ExitCode::SUCCESS
+    );
 
-    assert!(is_installed());
+    assert!(is_installed(crate::agents::pi::PiHost::Pi));
 }
 
 /// `--install-dir` addresses Relay's own marketplace root, and pi has none.
@@ -230,17 +264,23 @@ fn install_dir_is_rejected_rather_than_ignored() {
     let _scope = scoped(temp.path());
     let elsewhere = Some(temp.path().join("elsewhere"));
 
-    let install_error = install(InstallRequest {
-        install_dir: elsewhere.clone(),
-        ..request(false, false)
-    })
+    let install_error = install(
+        crate::agents::pi::PiHost::Pi,
+        InstallRequest {
+            install_dir: elsewhere.clone(),
+            ..request(false, false)
+        },
+    )
     .unwrap_err()
     .to_string();
-    let uninstall_error = uninstall(UninstallRequest {
-        install_dir: elsewhere,
-        dry_run: false,
-        force: false,
-    })
+    let uninstall_error = uninstall(
+        crate::agents::pi::PiHost::Pi,
+        UninstallRequest {
+            install_dir: elsewhere,
+            dry_run: false,
+            force: false,
+        },
+    )
     .unwrap_err()
     .to_string();
 
@@ -263,8 +303,12 @@ fn a_newer_install_state_is_reported_as_upgradable_not_as_foreign() {
     .unwrap();
 
     for error in [
-        install(request(true, false)).unwrap_err().to_string(),
-        uninstall(removal(false)).unwrap_err().to_string(),
+        install(crate::agents::pi::PiHost::Pi, request(true, false))
+            .unwrap_err()
+            .to_string(),
+        uninstall(crate::agents::pi::PiHost::Pi, removal(false))
+            .unwrap_err()
+            .to_string(),
     ] {
         assert!(error.contains("version 99"), "{error}");
         assert!(error.contains("Upgrade nemo-relay"), "{error}");
@@ -278,13 +322,13 @@ fn setup_offers_an_install_only_when_nothing_is_there() {
     let _scope = scoped(temp.path());
 
     assert!(
-        setup_install_available(),
+        setup_install_available(crate::agents::pi::PiHost::Pi),
         "a clean machine should be offered one"
     );
 
-    install(request(false, false)).unwrap();
+    install(crate::agents::pi::PiHost::Pi, request(false, false)).unwrap();
     assert!(
-        !setup_install_available(),
+        !setup_install_available(crate::agents::pi::PiHost::Pi),
         "an install already written needs no offer"
     );
 }
@@ -296,7 +340,7 @@ fn setup_makes_no_offer_over_an_unmanaged_copy() {
     let _scope = scoped(temp.path());
     write_unmanaged_copy(&temp.path().join("extensions").join("mine"));
 
-    assert!(!setup_install_available());
+    assert!(!setup_install_available(crate::agents::pi::PiHost::Pi));
 }
 
 /// The two collectors answer different questions, and conflating them panicked `doctor`.
@@ -311,7 +355,7 @@ fn a_managed_install_is_uninstallable_but_never_a_marketplace_integration() {
     let marketplace = temp.path().join("plugins");
     let all = crate::agents::CodingAgent::ALL;
 
-    install(request(false, false)).unwrap();
+    install(crate::agents::pi::PiHost::Pi, request(false, false)).unwrap();
 
     // Both hold whether or not force-cleanup targets are included: `include_local_install` widens
     // the marketplace question, it does not give pi a marketplace answer.
@@ -368,7 +412,7 @@ fn uninstall_refuses_state_that_names_a_path_outside_the_install() {
     for escape in ["../../victim.txt", "/tmp/nemo-relay-pi-victim-absolute.txt"] {
         let temp = tempfile::tempdir().unwrap();
         let _scope = scoped(temp.path());
-        install(request(false, false)).unwrap();
+        install(crate::agents::pi::PiHost::Pi, request(false, false)).unwrap();
 
         let victim = if escape.starts_with('/') {
             let victim = std::env::temp_dir().join("nemo-relay-pi-victim-absolute.txt");
@@ -386,7 +430,9 @@ fn uninstall_refuses_state_that_names_a_path_outside_the_install() {
         };
         record_paths(&root(), &[(recorded.as_str(), &sha256_of(&victim))]);
 
-        let error = uninstall(removal(false)).unwrap_err().to_string();
+        let error = uninstall(crate::agents::pi::PiHost::Pi, removal(false))
+            .unwrap_err()
+            .to_string();
 
         assert!(
             error.contains("not a path inside the install directory"),
@@ -405,10 +451,12 @@ fn uninstall_refuses_state_that_names_a_path_outside_the_install() {
 fn install_refuses_state_that_names_a_path_outside_the_install() {
     let temp = tempfile::tempdir().unwrap();
     let _scope = scoped(temp.path());
-    install(request(false, false)).unwrap();
+    install(crate::agents::pi::PiHost::Pi, request(false, false)).unwrap();
     record_paths(&root(), &[("../escape.ts", "sha256:0")]);
 
-    let error = install(request(true, false)).unwrap_err().to_string();
+    let error = install(crate::agents::pi::PiHost::Pi, request(true, false))
+        .unwrap_err()
+        .to_string();
 
     assert!(
         error.contains("not a path inside the install directory"),
@@ -424,11 +472,11 @@ fn install_refuses_state_that_names_a_path_outside_the_install() {
 fn uninstall_keeps_a_file_edited_into_something_unreadable() {
     let temp = tempfile::tempdir().unwrap();
     let _scope = scoped(temp.path());
-    install(request(false, false)).unwrap();
+    install(crate::agents::pi::PiHost::Pi, request(false, false)).unwrap();
     let edited = root().join("index.ts");
     std::fs::write(&edited, [0xff, 0xfe, 0x00, 0x01]).unwrap();
 
-    uninstall(removal(false)).unwrap();
+    uninstall(crate::agents::pi::PiHost::Pi, removal(false)).unwrap();
 
     assert!(
         edited.exists(),
@@ -449,7 +497,7 @@ fn uninstall_does_not_follow_a_symlinked_parent_out_of_the_install() {
     {
         let temp = tempfile::tempdir().unwrap();
         let _scope = scoped(temp.path());
-        install(request(false, false)).unwrap();
+        install(crate::agents::pi::PiHost::Pi, request(false, false)).unwrap();
 
         let outside = temp.path().join("outside");
         // Left *empty*, which is what makes the pruning half reachable: `remove_dir` fails
@@ -463,7 +511,7 @@ fn uninstall_does_not_follow_a_symlinked_parent_out_of_the_install() {
         std::os::unix::fs::symlink(&outside, &src).unwrap();
         record_paths(&root(), &[("src/deep/x.ts", "sha256:0")]);
 
-        let code = uninstall(removal(false)).unwrap();
+        let code = uninstall(crate::agents::pi::PiHost::Pi, removal(false)).unwrap();
 
         assert!(
             victim_dir.exists(),
@@ -509,7 +557,9 @@ fn force_never_overwrites_an_extension_relay_did_not_write() {
         write(&root());
         let before = std::fs::read_to_string(root().join("index.ts")).unwrap();
 
-        let error = install(request(true, false)).unwrap_err().to_string();
+        let error = install(crate::agents::pi::PiHost::Pi, request(true, false))
+            .unwrap_err()
+            .to_string();
 
         assert!(
             error.contains("did not write"),
@@ -528,11 +578,13 @@ fn force_never_overwrites_an_extension_relay_did_not_write() {
 fn force_never_overwrites_leftovers_either() {
     let temp = tempfile::tempdir().unwrap();
     let _scope = scoped(temp.path());
-    install(request(false, false)).unwrap();
+    install(crate::agents::pi::PiHost::Pi, request(false, false)).unwrap();
     std::fs::write(root().join("src").join("user-bash.ts"), "// mine").unwrap();
-    uninstall(removal(false)).unwrap();
+    uninstall(crate::agents::pi::PiHost::Pi, removal(false)).unwrap();
 
-    let error = install(request(true, false)).unwrap_err().to_string();
+    let error = install(crate::agents::pi::PiHost::Pi, request(true, false))
+        .unwrap_err()
+        .to_string();
 
     assert!(error.contains("pi would not load it"), "{error}");
     assert!(

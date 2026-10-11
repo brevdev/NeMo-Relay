@@ -33,13 +33,19 @@ use crate::sessions::HookEffects;
 ///   is deliberately NOT mapped: it fires before validation and before
 ///   `tool_call`, including for calls that never execute, so using it to open a
 ///   tool span would create spans for calls pi then discards.
+#[cfg(test)]
 pub(crate) fn adapt(payload: Value, headers: &HeaderMap) -> AdapterOutcome {
+    adapt_as(AgentKind::Pi, payload, headers)
+}
+
+/// Classifies a hook from a host running the pi extension: pi itself, or omp.
+pub(crate) fn adapt_as(kind: AgentKind, payload: Value, headers: &HeaderMap) -> AdapterOutcome {
     let events = classify(
         &payload,
         headers,
         &PI_PAYLOAD_EXTRACTOR,
         &ClassificationRules {
-            kind: AgentKind::Pi,
+            kind,
             agent_start: &["session_start", "sessionStart"],
             agent_end: &["session_shutdown", "sessionShutdown"],
             // pi ships no MCP client and has no nested-agent hook of its own;

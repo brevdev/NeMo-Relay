@@ -5,6 +5,8 @@
 pub(crate) mod claude_code;
 #[path = "../codex/adapter.rs"]
 pub(crate) mod codex;
+#[path = "../cursor/adapter.rs"]
+pub(crate) mod cursor;
 #[path = "../pi/adapter.rs"]
 pub(crate) mod pi;
 
@@ -208,11 +210,26 @@ pub(crate) trait AgentPayloadExtractor {
 pub(super) struct ClaudeCodePayloadExtractor;
 pub(super) struct CodexPayloadExtractor;
 pub(super) struct PiPayloadExtractor;
+pub(super) struct CursorPayloadExtractor;
 
 pub(super) static CLAUDE_CODE_PAYLOAD_EXTRACTOR: ClaudeCodePayloadExtractor =
     ClaudeCodePayloadExtractor;
 pub(super) static CODEX_PAYLOAD_EXTRACTOR: CodexPayloadExtractor = CodexPayloadExtractor;
 pub(super) static PI_PAYLOAD_EXTRACTOR: PiPayloadExtractor = PiPayloadExtractor;
+pub(super) static CURSOR_PAYLOAD_EXTRACTOR: CursorPayloadExtractor = CursorPayloadExtractor;
+
+/// Cursor's hook payloads use Claude Code's field names (`tool_use_id`, `tool_input`,
+/// `tool_output`) and key sessions by `conversation_id`. It must not adopt a Claude Code session
+/// header that happens to be in the environment.
+impl AgentPayloadExtractor for CursorPayloadExtractor {
+    fn session_header_policy(&self) -> SessionHeaderPolicy {
+        SessionHeaderPolicy::RelayOnly
+    }
+
+    fn tool_paths(&self) -> &'static ToolPathSet {
+        CLAUDE_TOOL_PATHS
+    }
+}
 
 /// pi hooks are emitted by a NeMo Relay-authored extension, so the payload uses
 /// the canonical key names and needs no path deviations. Two overrides:

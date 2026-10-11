@@ -230,11 +230,21 @@ pub(crate) async fn execute(
             .await?;
         }
         Some(DaemonSubcommand::ManagedBundle(command)) => {
-            let agents = command.agents.into_iter().map(|agent| match agent {
-                AgentArg::Codex => daemon::managed::ManagedAgent::Codex,
-                AgentArg::Claude => daemon::managed::ManagedAgent::ClaudeCode,
-                AgentArg::Pi => daemon::managed::ManagedAgent::Pi,
-            });
+            let agents = command
+                .agents
+                .into_iter()
+                .map(|agent| match agent {
+                    AgentArg::Codex => Ok(daemon::managed::ManagedAgent::Codex),
+                    AgentArg::Claude => Ok(daemon::managed::ManagedAgent::ClaudeCode),
+                    AgentArg::Pi => Ok(daemon::managed::ManagedAgent::Pi),
+                    AgentArg::Omp | AgentArg::Cursor => Err(CliError::Config(format!(
+                        "managed bundles do not support {} yet; run `nemo-relay install {}` \
+                         on each machine instead",
+                        crate::agents::CodingAgent::from(agent).label(),
+                        crate::agents::CodingAgent::from(agent).install_arg()
+                    ))),
+                })
+                .collect::<Result<Vec<_>, CliError>>()?;
             let spec = daemon::managed::ManagedBundleSpec::new(
                 command.daemon_address,
                 command.dispatcher_command,

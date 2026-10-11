@@ -1,0 +1,54 @@
+---
+title: "omp"
+description: ""
+position: 7
+---
+{/* SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+SPDX-License-Identifier: Apache-2.0 */}
+
+Use this guide to observe local [omp](https://github.com/can1357/oh-my-pi) (oh-my-pi)
+sessions. omp is a fork of pi that keeps pi's extension API, so it loads the same NeMo
+Relay extension as [pi](/nemo-relay-cli/pi) and records the same session, turn, tool,
+inline-shell and model activity, attributed to `omp`. Everything the pi guide says
+about tool gating, failing open and model redirection applies here; this page covers
+only what differs.
+
+## Install The Extension
+
+```bash
+nemo-relay install omp
+```
+
+This writes the extension into `~/.omp/agent/extensions/nemo-relay`, which omp
+auto-discovers. omp honors `PI_CODING_AGENT_DIR` for its whole agent directory, and
+`PI_CONFIG_DIR` renames the `.omp` part. omp reads only its own directories, so a
+copy installed for pi in `~/.pi` does not load twice. Remove it with
+`nemo-relay uninstall omp`.
+
+## Run omp
+
+```bash
+nemo-relay omp -- -p "summarize this repository"
+```
+
+The launcher passes the extension with `omp -e <path>` and tells it to report to the
+gateway's `/hooks/omp` route. An omp started directly, against a running gateway,
+detects that it runs inside omp from its executable and reports to the same route.
+
+## What Differs From pi
+
+- `omp --version` prints `omp/<version>`. The integration is verified against omp
+  18.8.x; a newer minor is accepted but reported as unverified.
+- omp has no `model_select` or `agent_settled` hook. A model switched mid-session is
+  therefore not re-evaluated for redirection, and the attempt counter is not reset
+  at the end of an agent run.
+- omp's provider registration builds new model objects rather than rewriting the
+  session's model in place, so after redirecting a provider the extension re-selects
+  the session's model to the redirected copy. The selection is not persisted to
+  omp's settings.
+- `nemo-relay doctor omp` reports where the extension loads from and whether the
+  gateway answers. The pi-only preflight checks (project-scoped copies recorded in
+  pi's `settings.json`, managed-install drift) do not run for omp, and omp's YAML
+  settings are not read for installed packages.
+- Managed daemon bundles do not include omp; run `nemo-relay install omp` on each
+  machine.

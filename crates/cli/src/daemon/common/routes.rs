@@ -16,6 +16,8 @@ pub(crate) enum HookRoute {
     Codex,
     Claude,
     Pi,
+    Omp,
+    Cursor,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,6 +32,8 @@ impl PublicRoute {
             "/hooks/codex" => Some(Self::Hook(HookRoute::Codex)),
             "/hooks/claude-code" => Some(Self::Hook(HookRoute::Claude)),
             "/hooks/pi" => Some(Self::Hook(HookRoute::Pi)),
+            "/hooks/omp" => Some(Self::Hook(HookRoute::Omp)),
+            "/hooks/cursor" => Some(Self::Hook(HookRoute::Cursor)),
             "/responses"
             | "/chat/completions"
             | "/models"
@@ -70,8 +74,8 @@ impl PublicRoute {
 impl HookRoute {
     pub(crate) const fn pass_through_body(self) -> &'static [u8] {
         match self {
-            Self::Codex | Self::Pi => b"{}",
-            Self::Claude => br#"{"continue":true}"#,
+            Self::Codex | Self::Pi | Self::Omp => b"{}",
+            Self::Claude | Self::Cursor => br#"{"continue":true}"#,
         }
     }
 }

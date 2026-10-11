@@ -489,6 +489,9 @@ fn route_event_through_alias_covers_all_event_variants() {
             NormalizedEvent::SubagentStarted(event) | NormalizedEvent::SubagentEnded(event) => {
                 assert!(!event.subagent_id.is_empty());
             }
+            NormalizedEvent::LlmObserved(event) => {
+                assert_eq!(event.session_id, "parent");
+            }
             NormalizedEvent::LlmHint(event) => {
                 assert_eq!(event.subagent_id.as_deref(), Some("child"));
             }
@@ -912,6 +915,7 @@ fn event_metadata(event: &NormalizedEvent) -> &Value {
         | NormalizedEvent::Compaction(event)
         | NormalizedEvent::Notification(event)
         | NormalizedEvent::HookMark(event) => &event.metadata,
+        NormalizedEvent::LlmObserved(event) => &event.metadata,
         NormalizedEvent::SubagentStarted(event) | NormalizedEvent::SubagentEnded(event) => {
             &event.metadata
         }

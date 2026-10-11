@@ -25,6 +25,8 @@ pub(crate) enum AgentArg {
     Claude,
     Codex,
     Pi,
+    Omp,
+    Cursor,
 }
 
 impl From<AgentArg> for CodingAgent {
@@ -33,6 +35,8 @@ impl From<AgentArg> for CodingAgent {
             AgentArg::Claude => Self::ClaudeCode,
             AgentArg::Codex => Self::Codex,
             AgentArg::Pi => Self::Pi,
+            AgentArg::Omp => Self::Omp,
+            AgentArg::Cursor => Self::Cursor,
         }
     }
 }
@@ -105,6 +109,21 @@ pub(crate) enum Command {
                       nemo-relay pi --dry-run"
     )]
     Pi(EasyPathCommand),
+    /// Run omp with observability (setup on first use; the extension must already be installed)
+    #[command(
+        long_about = "Run the `omp` (oh-my-pi) CLI under an ephemeral NeMo Relay gateway. omp is a \
+                      fork of pi that keeps pi's extension API, so it loads the same NeMo Relay \
+                      pi extension, installed into omp's own agent directory with `nemo-relay \
+                      install omp`. This command loads it with `omp -e <path>` and tells it to \
+                      report to the gateway's omp hook route. Model calls are routed through the \
+                      gateway on the same terms as for pi. Run `nemo-relay doctor omp` to see \
+                      which path it loads from.",
+        after_help = "Examples:\n  \
+                      nemo-relay omp\n  \
+                      nemo-relay omp -- -p \"summarize this repository\"\n  \
+                      nemo-relay omp --dry-run"
+    )]
+    Omp(EasyPathCommand),
     /// Keep a shared Relay gateway ready for an MCP client.
     #[command(
         long_about = "Start or reuse a shared native NeMo Relay gateway for an MCP stdio \
@@ -153,6 +172,7 @@ impl Command {
             Self::Claude(_) => "claude",
             Self::Codex(_) => "codex",
             Self::Pi(_) => "pi",
+            Self::Omp(_) => "omp",
             Self::Mcp => "mcp",
             Self::Gateway(_) => "gateway",
             Self::Config(_) => "config",

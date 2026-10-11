@@ -305,6 +305,7 @@ pub(super) fn event_agent_kind(event: &NormalizedEvent) -> AgentKind {
         | NormalizedEvent::Notification(event)
         | NormalizedEvent::HookMark(event) => event.agent_kind,
         NormalizedEvent::LlmHint(event) => event.agent_kind,
+        NormalizedEvent::LlmObserved(event) => event.agent_kind,
         NormalizedEvent::SubagentStarted(event) | NormalizedEvent::SubagentEnded(event) => {
             event.agent_kind
         }

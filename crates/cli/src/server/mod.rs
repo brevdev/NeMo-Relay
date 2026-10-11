@@ -723,6 +723,8 @@ fn router_with_state(state: AppState) -> Router {
         .route("/hooks/codex", post(codex_hook))
         .route("/hooks/claude-code", post(claude_code_hook))
         .route("/hooks/pi", post(pi_hook))
+        .route("/hooks/omp", post(omp_hook))
+        .route("/hooks/cursor", post(cursor_hook))
         .route("/responses", post(gateway::passthrough))
         .route("/chat/completions", post(gateway::passthrough))
         .route("/models", get(gateway::models))
@@ -1414,6 +1416,24 @@ async fn claude_code_hook(
 // means giving the extension a credential first; see `SessionManager::apply_events`.
 async fn pi_hook(
     State(state): State<AppState>,
+    headers: HeaderMap,
+    payload: Result<Json<Value>, JsonRejection>,
+) -> Result<Json<Value>, CliError> {
+    pi_family_hook(crate::events::AgentKind::Pi, state, headers, payload).await
+}
+
+/// omp runs the same extension as pi, so its hooks take pi's path under omp's own identity.
+async fn omp_hook(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    payload: Result<Json<Value>, JsonRejection>,
+) -> Result<Json<Value>, CliError> {
+    pi_family_hook(crate::events::AgentKind::Omp, state, headers, payload).await
+}
+
+/// Cursor hooks carry observations only; Relay never blocks Cursor, so there is no permission path.
+async fn cursor_hook(
+    State(state): State<AppState>,
     mut headers: HeaderMap,
     payload: Result<Json<Value>, JsonRejection>,
 ) -> Result<Json<Value>, CliError> {
@@ -1422,7 +1442,33 @@ async fn pi_hook(
     let Json(payload) = payload.map_err(|error| {
         hook_payload_rejection(error, state.config.max_hook_payload_bytes, &operational)
     })?;
-    let outcome = pi::adapt(payload, &headers);
+    let outcome = crate::agents::shared::adapters::cursor::adapt(payload, &headers);
+    let operational = outcome
+        .events
+        .first()
+        .map(|event| operational.clone().with_session(event.session_id()))
+        .unwrap_or(operational);
+    operational::hook_started(&operational, "hook_server");
+    if let Err(error) = state.sessions.apply_events(&headers, outcome.events).await {
+        operational::hook_failed(&operational, "hook_server", error.log_kind(), true);
+        return Err(error);
+    }
+    operational::hook_completed(&operational, "hook_server", "completed");
+    Ok(Json(outcome.response))
+}
+
+async fn pi_family_hook(
+    kind: crate::events::AgentKind,
+    state: AppState,
+    mut headers: HeaderMap,
+    payload: Result<Json<Value>, JsonRejection>,
+) -> Result<Json<Value>, CliError> {
+    state.touch();
+    let operational = OperationalContext::take_from_headers(&mut headers);
+    let Json(payload) = payload.map_err(|error| {
+        hook_payload_rejection(error, state.config.max_hook_payload_bytes, &operational)
+    })?;
+    let outcome = pi::adapt_as(kind, payload, &headers);
     let operational = outcome
         .events
         .first()

@@ -10,6 +10,11 @@ pub(crate) enum AgentKind {
     Codex,
     ClaudeCode,
     Pi,
+    /// omp (oh-my-pi), which runs the pi extension and shares every pi behaviour below.
+    Omp,
+    /// Cursor's CLI, observed through its hooks only: its model traffic goes through Cursor's
+    /// own backend, which Relay cannot proxy.
+    Cursor,
     Gateway,
 }
 
@@ -21,6 +26,8 @@ impl AgentKind {
             Self::Codex => "codex",
             Self::ClaudeCode => "claude-code",
             Self::Pi => "pi",
+            Self::Omp => "omp",
+            Self::Cursor => "cursor",
             Self::Gateway => "gateway",
         }
     }
@@ -29,7 +36,9 @@ impl AgentKind {
     /// A generic gateway does not establish where or how a tool executes.
     pub(crate) const fn tool_execution_type(self) -> Option<&'static str> {
         match self {
-            Self::ClaudeCode | Self::Codex | Self::Pi => Some("function"),
+            Self::ClaudeCode | Self::Codex | Self::Pi | Self::Omp | Self::Cursor => {
+                Some("function")
+            }
             Self::Gateway => None,
         }
     }
@@ -47,7 +56,7 @@ impl AgentKind {
     // works in terms of `AgentKind`; the matching hook names live in each adapter's
     // `ClassificationRules::turn_start`.
     pub(crate) const fn has_explicit_turn_start(self) -> bool {
-        matches!(self, Self::Pi)
+        matches!(self, Self::Pi | Self::Omp)
     }
 
     // Whether this harness can execute arguments the gateway rewrote.
@@ -58,7 +67,7 @@ impl AgentKind {
     // arguments on the tool span that never executed -- worse than not running it, because the
     // trace would then disagree with reality.
     pub(crate) const fn applies_tool_argument_transforms(self) -> bool {
-        matches!(self, Self::Pi)
+        matches!(self, Self::Pi | Self::Omp)
     }
 }
 
@@ -82,6 +91,9 @@ pub(crate) enum NormalizedEvent {
     SubagentStarted(SubagentEvent),
     SubagentEnded(SubagentEvent),
     LlmHint(LlmHintEvent),
+    /// A model step a harness reported through its hooks, for a harness whose model traffic the
+    /// gateway cannot see (Cursor). Replayed as an LLM span that opens and closes at once.
+    LlmObserved(LlmObservedEvent),
     ToolStarted(ToolEvent),
     ToolEnded(ToolEvent),
     #[allow(dead_code)]
@@ -109,6 +121,7 @@ impl NormalizedEvent {
             | Self::Notification(event)
             | Self::HookMark(event) => &event.session_id,
             Self::LlmHint(event) => &event.session_id,
+            Self::LlmObserved(event) => &event.session_id,
             Self::SubagentStarted(event) | Self::SubagentEnded(event) => &event.session_id,
             Self::ToolStarted(event) | Self::ToolEnded(event) => &event.session_id,
         }
@@ -122,6 +135,24 @@ impl NormalizedEvent {
             Self::AgentEnded(_) | Self::SubagentEnded(_) | Self::ToolEnded(_)
         )
     }
+}
+
+/// One model step, as a harness reported it from outside the model call.
+///
+/// `reasoning` without `text` is the harness's thinking for a step whose response is still to
+/// come; the session holds it and attaches it to that response.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct LlmObservedEvent {
+    pub(crate) session_id: String,
+    pub(crate) agent_kind: AgentKind,
+    pub(crate) event_name: String,
+    pub(crate) model: Option<String>,
+    pub(crate) generation_id: Option<String>,
+    pub(crate) text: Option<String>,
+    pub(crate) reasoning: Option<String>,
+    /// Token counts in the shape ATIF reads (`input_tokens`, `output_tokens`, ...).
+    pub(crate) usage: Option<Value>,
+    pub(crate) metadata: Value,
 }
 
 #[derive(Debug, Clone, PartialEq)]

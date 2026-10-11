@@ -2645,7 +2645,7 @@ async fn assert_harness_tool_execution_metadata(kind: AgentKind, post_only: bool
             "toolCallId",
             "input",
         ),
-        AgentKind::Gateway => unreachable!(),
+        AgentKind::Gateway | AgentKind::Omp | AgentKind::Cursor => unreachable!(),
     };
     let session_start = if kind == AgentKind::Pi {
         "session_start"
@@ -2672,7 +2672,7 @@ async fn assert_harness_tool_execution_metadata(kind: AgentKind, post_only: bool
             }
             AgentKind::Codex => crate::agents::shared::adapters::codex::adapt(payload, &headers),
             AgentKind::Pi => crate::agents::shared::adapters::pi::adapt(payload, &headers),
-            AgentKind::Gateway => unreachable!(),
+            AgentKind::Gateway | AgentKind::Omp | AgentKind::Cursor => unreachable!(),
         };
         manager
             .apply_events(&headers, outcome.events)

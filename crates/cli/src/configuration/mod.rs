@@ -87,6 +87,8 @@ struct FileAgentsConfig {
     claude: Option<FileAgentCommandConfig>,
     codex: Option<FileAgentCommandConfig>,
     pi: Option<FileAgentCommandConfig>,
+    omp: Option<FileAgentCommandConfig>,
+    cursor: Option<FileAgentCommandConfig>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -1944,6 +1946,12 @@ fn apply_file_agents_config(agents: &mut AgentConfigs, file_agents: Option<FileA
     }
     if let Some(value) = file_agents.pi {
         agents.pi.command = value.command;
+    }
+    if let Some(value) = file_agents.omp {
+        agents.omp.command = value.command;
+    }
+    if let Some(value) = file_agents.cursor {
+        agents.cursor.command = value.command;
     }
 }
 

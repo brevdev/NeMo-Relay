@@ -30,13 +30,9 @@ fn rejects_output_that_is_not_a_dated_build() {
 fn descriptor_routes_cursor_agent_to_the_cursor_hook_endpoint() {
     assert_eq!(DESCRIPTOR.hook_path, "/hooks/cursor");
     assert_eq!(DESCRIPTOR.executable, "cursor-agent");
-    for event in [
-        "afterAgentResponse",
-        "afterAgentThought",
-        "preToolUse",
-        "postToolUse",
-        "stop",
-    ] {
+    for event in ["afterAgentResponse", "preToolUse", "postToolUse", "stop"] {
         assert!(DESCRIPTOR.hook_events.contains(&event), "{event}");
     }
+    // Registering it makes Cursor CLI 2026.10.01 drop its backend connection and fail the run.
+    assert!(!DESCRIPTOR.hook_events.contains(&"afterAgentThought"));
 }

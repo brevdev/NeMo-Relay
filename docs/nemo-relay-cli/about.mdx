@@ -60,7 +60,7 @@ controls.
 | Codex | Yes | Yes | Partial | Persistent install verifies all 10 hooks in the supported schema. A parent `Stop` finalizes the bounded task when no delegated agents remain; the plugin schema does not expose `SessionEnd`. |
 | pi | Partial | Yes | No | Proof of concept. Tool and turn activity are captured through a Relay-authored pi extension, and both tool calls and model calls can be blocked. Model traffic reaches the gateway only when the gateway forwards to the endpoint every model of the selected provider would otherwise call, because pi's provider registration is provider-wide. |
 | omp | Partial | Yes | No | The pi extension, loaded by omp. Same coverage as pi, attributed to omp. |
-| Cursor CLI | Partial | No | No | Hooks only: prompts, model steps with tokens and thinking, and tool calls. Cursor's model requests go through its own backend. |
+| Cursor CLI | Partial | No | No | Hooks only: the session and its tool calls. The CLI does not fire its prompt or response hooks, and its model requests go through Cursor's backend. |
 
 For minimum agent versions, platform support, and current limitations, refer to
 the [Support Matrix](/reference/support-matrix).

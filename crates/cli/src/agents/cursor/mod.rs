@@ -24,11 +24,13 @@ pub(super) const DESCRIPTOR: AgentDescriptor = AgentDescriptor {
     version_product: "Cursor CLI",
     minimum_version: (2026, 10, 1),
     verified_through: Some((2026, 10)),
+    // Not `afterAgentThought`: with any command registered for it, Cursor CLI 2026.10.01 loses its
+    // connection to Cursor's backend mid-session and the run fails (verified live, 2026-10-12).
+    // The adapter still understands it, for a Cursor build where it is safe.
     hook_events: &[
         "sessionStart",
         "sessionEnd",
         "beforeSubmitPrompt",
-        "afterAgentThought",
         "afterAgentResponse",
         "preToolUse",
         "postToolUse",

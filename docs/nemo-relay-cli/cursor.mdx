@@ -8,19 +8,29 @@ SPDX-License-Identifier: Apache-2.0 */}
 
 Use this guide to observe Cursor CLI (`cursor-agent`) sessions. Cursor sends its
 model requests through Cursor's own backend, which Relay cannot proxy, so Cursor is
-observed through its hooks only:
+observed through its hooks only.
 
-- `beforeSubmitPrompt` opens a turn with the user's prompt, and `stop` closes it.
-- `afterAgentResponse` and `afterAgentThought` become one LLM span per model step,
-  with the response text, the thinking ahead of it, the model, and input, output and
-  cache token counts.
-- `preToolUse`, `postToolUse` and `postToolUseFailure` become tool spans with their
-  inputs and outputs. The shell, MCP and file hooks report the same executions and
-  are kept as marks rather than second spans.
+**What the CLI reports today (Cursor CLI 2026.10.01, verified in a live headless
+run).** The CLI fires `sessionStart`, `preToolUse`, `postToolUse`,
+`beforeShellExecution`, `afterShellExecution` and `sessionEnd`. Relay records the
+session and every tool call with its input and output. The CLI does **not** fire
+`beforeSubmitPrompt`, `afterAgentResponse` or `stop`, although its bundle defines
+them, so prompts, responses and token counts are not recorded. Cursor keeps the
+conversation's text (prompts and responses, without tools, tokens or timestamps) in
+`~/.cursor/projects/<workspace>/agent-transcripts/<conversation_id>/`.
 
-The trajectory therefore has the prompt, every response, thinking, tool call and
-token count, but not the full requests Cursor's servers build, and no model-call
-security or optimization. Relay never blocks Cursor: every hook is allowed.
+Where Cursor does fire them, Relay maps:
+
+- `beforeSubmitPrompt` to a turn opened with the user's prompt, and `stop` to its
+  close;
+- `afterAgentResponse` to an LLM span per model step, with the response text, the
+  model, and input, output and cache token counts;
+- `preToolUse`, `postToolUse` and `postToolUseFailure` to tool spans; the shell, MCP
+  and file hooks report the same executions and stay marks.
+
+`afterAgentThought` is not installed: with any command registered for it, Cursor CLI
+2026.10.01 loses its connection to Cursor's backend mid-session and the run fails.
+Relay never blocks Cursor: every hook is allowed.
 
 ## Install
 
